@@ -67,3 +67,13 @@ pnpm 的子目录语法：`dsh plugin --profile web add "github:<user>/dsh-plugi
 - `dsh web --dump-config`：三个插件各挂载一次，无重复行
 - profile（`~/.dsh/profiles/web`）→ 三个包的 `link:` 指向本仓库子目录，workspace 化后不变
 - 从 profile 解析锚点导入三个 host 入口（含 vision-suite 的运行时依赖链）全部通过
+
+## 使用方式
+```
+# 克隆后一次装完
+pnpm install
+# 装进 web profile（在仓库根执行）
+dsh plugin --profile web add ./dsh-usage-suite   # 逐个或全装
+# 远端安装单个插件（不整库落地）
+dsh plugin --profile web add "github:<user>/dsh-plugin-daix#path:dsh-vision-suite"
+```
