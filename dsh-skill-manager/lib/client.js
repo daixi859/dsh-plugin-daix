@@ -93,6 +93,14 @@ window.__ModuleLoader__.load({
       toggleFailed: "Toggle failed",
     };
 
+    // 绑定翻译：apply() 里被 locale.bind(NS) 替换；服务不可用时按浏览器语言回退。
+    // 不读 props.t —— settings.section 的渲染 props 在官方挂载路径不保证提供它。
+    var t = function (key) {
+      var lang = (typeof navigator !== "undefined" && navigator.language) || "en";
+      var dict = String(lang).toLowerCase().indexOf("zh") === 0 ? zh : en;
+      return Object.prototype.hasOwnProperty.call(dict, key) ? dict[key] : key;
+    };
+
     // ── 数据访问 ────────────────────────────────────────────────────────────
     function fetchList(workspacePath) {
       var query = workspacePath ? "?cwd=" + encodeURIComponent(workspacePath) : "";
@@ -119,16 +127,17 @@ window.__ModuleLoader__.load({
 
     // ── 设置页组件 ──────────────────────────────────────────────────────────
     function SkillManagerView(props) {
-      var useWorkspaces = props.useWorkspaces;
-      var workspacePath = useWorkspaces(function (s) {
-        var items = s.items || [];
-        var recent = items.find(function (w) { return w.id === s.recentWorkspaceId; });
-        return recent ? recent.path : undefined;
-      });
+      var useWorkspaces = typeof props.useWorkspaces === "function" ? props.useWorkspaces : null;
+      var workspacePath = useWorkspaces !== null
+        ? useWorkspaces(function (s) {
+            var items = s.items || [];
+            var recent = items.find(function (w) { return w.id === s.recentWorkspaceId; });
+            return recent ? recent.path : undefined;
+          })
+        : undefined;
       var useState = React.useState;
       var useEffect = React.useEffect;
       var useCallback = React.useCallback;
-      var t = props.t;
       var loadingState = useState(true);
       var loading = loadingState[0];
       var setLoading = loadingState[1];
@@ -295,7 +304,6 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       var locale = ctx.get("locale");
-      var t = function (key) { return key; };
       if (locale) {
         ctx.effect(
           function () {
