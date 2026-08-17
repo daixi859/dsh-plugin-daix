@@ -1,0 +1,8 @@
+# dependencies & pnpm store
+node_modules/
+.pnpm-store/
+
+# local dsh session data / project skills scratch
+.dsh/
+
+*.log
