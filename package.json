@@ -2,7 +2,7 @@
   "name": "dsh-plugin-daix",
   "version": "0.0.0",
   "private": true,
-  "description": "Three DeepSeek Harness plugins (skill manager / usage suite / vision suite) in one pnpm workspace git repository.",
+  "description": "DeepSeek Harness skill manager plugin (single-package pnpm workspace git repository).",
   "packageManager": "pnpm@8.15.9",
   "license": "MIT"
 }

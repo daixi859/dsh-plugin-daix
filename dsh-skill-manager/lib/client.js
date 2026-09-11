@@ -44,6 +44,12 @@ window.__ModuleLoader__.load({
 .skm-thumb{background:var(--dsw-alias-label-tertiary);width:16px;height:16px;border-radius:8px;position:absolute;top:1px;left:1px;transition:left .12s,background .12s}
 .skm-switch[data-on="true"] .skm-thumb{background:var(--dsw-alias-label-primary-foreground);left:17px}
 .skm-lock{flex:none;font-size:13px;line-height:20px}
+.skm-picker{align-items:center;gap:10px;display:flex;min-width:0}
+.skm-picker-label{color:var(--dsw-alias-label-secondary);flex:none;font-size:12px;line-height:18px}
+.skm-picker-select{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);height:28px;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:18px;background:0 0;border-radius:14px;padding:0 10px;max-width:480px;min-width:0;flex:1;cursor:pointer}
+.skm-picker-select:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.skm-picker-select:focus{outline:none;border-color:var(--dsw-alias-border-l3)}
+.skm-picker-path{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-caption);font-family:var(--ds-font-family-code);font-size:11px;line-height:16px;overflow:hidden}
 `;
     var tagId = "dsh-skill-manager/SkillManager.module.css";
     if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
@@ -71,6 +77,7 @@ window.__ModuleLoader__.load({
       modelOnly: "仅模型",
       userOnly: "仅用户",
       noWorkspace: "未检测到工作区（项目技能可能不可用）",
+      workspace: "工作区",
       loading: "加载中…",
       toggleFailed: "切换失败",
     };
@@ -89,6 +96,7 @@ window.__ModuleLoader__.load({
       modelOnly: "model-only",
       userOnly: "user-only",
       noWorkspace: "No workspace detected (project skills may be unavailable)",
+      workspace: "Workspace",
       loading: "Loading…",
       toggleFailed: "Toggle failed",
     };
@@ -128,16 +136,29 @@ window.__ModuleLoader__.load({
     // ── 设置页组件 ──────────────────────────────────────────────────────────
     function SkillManagerView(props) {
       var useWorkspaces = typeof props.useWorkspaces === "function" ? props.useWorkspaces : null;
-      var workspacePath = useWorkspaces !== null
-        ? useWorkspaces(function (s) {
-            var items = s.items || [];
-            var recent = items.find(function (w) { return w.id === s.recentWorkspaceId; });
-            return recent ? recent.path : undefined;
-          })
-        : undefined;
       var useState = React.useState;
       var useEffect = React.useEffect;
       var useCallback = React.useCallback;
+
+      // 工作区列表：WorkspaceSnapshot.items → { id, title, path }
+      // （快照无 recent/active 字段，当前工作区由用户在选择器中切换，默认第一个）
+      var workspaces = useWorkspaces !== null
+        ? useWorkspaces(function (s) {
+            return (s.items || []).map(function (w) {
+              return { id: w.workspaceId, title: w.title, path: w.path };
+            });
+          })
+        : [];
+      var selectedState = useState(null);
+      var selectedId = selectedState[0];
+      var setSelectedId = selectedState[1];
+      var workspace = null;
+      for (var wi = 0; wi < workspaces.length; wi += 1) {
+        if (workspaces[wi].id === selectedId) { workspace = workspaces[wi]; break; }
+      }
+      if (workspace === null && workspaces.length > 0) workspace = workspaces[0];
+      var workspacePath = workspace ? workspace.path : undefined;
+
       var loadingState = useState(true);
       var loading = loadingState[0];
       var setLoading = loadingState[1];
@@ -260,6 +281,28 @@ window.__ModuleLoader__.load({
         React.createElement("button", { type: "button", className: "skm-refresh", onClick: load }, t("refresh"))
       );
 
+      // 工作区选择器：切换后 workspacePath 变化 → load 重新拉取该工作区的项目技能
+      var projectTitle = t("project") + (workspace ? " · " + (workspace.title || workspace.path || workspace.id) : "");
+      var picker = workspaces.length > 0
+        ? React.createElement(
+            "div",
+            { className: "skm-picker" },
+            React.createElement("span", { className: "skm-picker-label" }, t("workspace")),
+            React.createElement(
+              "select",
+              {
+                className: "skm-picker-select",
+                value: workspace ? workspace.id : "",
+                onChange: function (e) { setSelectedId(e.target.value); },
+              },
+              workspaces.map(function (w) {
+                var label = (w.title || w.id) + (w.path ? " — " + w.path : "");
+                return React.createElement("option", { key: w.id, value: w.id }, label);
+              })
+            )
+          )
+        : React.createElement("p", { className: "skm-note" }, t("noWorkspace"));
+
       var body;
       if (loading) {
         body = React.createElement("p", { className: "skm-empty" }, t("loading"));
@@ -273,7 +316,7 @@ window.__ModuleLoader__.load({
                 React.Fragment,
                 null,
                 renderGroup(t("global"), groups.global || [], true),
-                renderGroup(t("project"), groups.project || [], true),
+                renderGroup(projectTitle, groups.project || [], true),
                 renderGroup(t("builtin"), groups.builtin || [], false)
               )
             : null
@@ -283,13 +326,13 @@ window.__ModuleLoader__.load({
           React.Fragment,
           null,
           React.createElement("p", { className: "skm-intro" }, t("intro")),
-          !workspacePath ? React.createElement("p", { className: "skm-note" }, t("noWorkspace")) : null,
+          picker,
           groups
             ? React.createElement(
                 "div",
                 { className: "skm-groups" },
                 renderGroup(t("global"), groups.global || [], true),
-                renderGroup(t("project"), groups.project || [], true),
+                renderGroup(projectTitle, groups.project || [], true),
                 renderGroup(t("builtin"), groups.builtin || [], false)
               )
             : null

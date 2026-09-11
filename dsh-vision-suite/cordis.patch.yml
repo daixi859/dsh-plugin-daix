@@ -1,9 +1,0 @@
-# dsh-vision-suite — bundle patch layer.
-#
-# Mounted by the official profile-bundle mechanism: `dsh plugin --profile web
-# add <this-checkout>` declares this package (via `dsh.bundle.patch` in
-# package.json) as a profile layer, and the loader composes this file ahead of
-# the profile's own cordis.patch.yml.
-- insert:
-    - id: vision-suite
-      name: "dsh-vision-suite"
