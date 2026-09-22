@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>费用展示插件 · 设计稿预览</title>
+<style>
+  :root {
+    --mint-bg: #e9f3f1;
+    --mint-bg-2: #ddeae7;
+    --card: #f6faf9;
+    --ink: #1e3a37;
+    --ink-2: #4d6763;
+    --ink-3: #7d938f;
+    --brand: #2f9e8f;
+    --amber: #d99a2b;
+    --red: #d05b4b;
+    --line: #cfe0dc;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    background: #f2f7f5; color: var(--ink); padding: 32px;
+    display: flex; gap: 48px; flex-wrap: wrap; align-items: flex-start;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+  h2.stage { font-size: 13px; color: var(--ink-3); margin-bottom: 10px; font-weight: 600; letter-spacing: .05em; }
+
+  /* ============ 场景一：侧边栏 ============ */
+  .sidebar {
+    width: 240px; background: var(--mint-bg); border-radius: 14px;
+    border: 1px solid var(--line); overflow: hidden;
+    box-shadow: 0 8px 28px rgba(30,58,55,.10);
+    display: flex; flex-direction: column;
+  }
+  .sb-top { padding: 12px 14px; font-weight: 700; font-size: 14px; border-bottom: 1px solid var(--line); }
+  .sb-item { padding: 8px 16px; font-size: 13px; color: var(--ink-2); display: flex; gap: 8px; align-items: center; }
+  .sb-item.active { color: var(--ink); background: var(--mint-bg-2); }
+  .sb-filler { padding: 6px 16px; font-size: 12px; color: var(--ink-3); }
+  .sb-spacer { flex: 1; min-height: 120px; }
+
+  /* —— 费用条（本次设计主体） —— */
+  .fee {
+    margin: 8px 8px 6px; padding: 7px 9px 8px;
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  }
+
+  .fee-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .tile {
+    position: relative; height: 38px; padding: 4px 7px 7px;
+    border-radius: 7px; background: var(--mint-bg); cursor: pointer;
+    display: flex; flex-direction: column; justify-content: space-between;
+    transition: background .12s;
+  }
+  .tile:hover { background: var(--mint-bg-2); }
+  .tile .row { display: flex; align-items: baseline; justify-content: space-between; }
+  .tile .name { font-size: 11px; font-weight: 600; color: var(--ink-2); }
+  .tile .val { font-size: 12px; font-weight: 700; }
+  .tile .bar { height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+  .tile .bar i { display: block; height: 100%; border-radius: 2px; background: var(--brand); }
+  .tile .bar i.warn { background: var(--amber); }
+  .tile .bar i.crit { background: var(--red); }
+  .tile .sub { font-size: 10px; color: var(--ink-3); }
+  /* 状态 */
+  .tile.stale { opacity: .6; }
+  .tile.nokey .val { color: var(--ink-3); font-weight: 600; }
+  .tile.error .val { color: var(--red); }
+  .skel { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--line) 25%, #fff 50%, var(--line) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  /* tooltip 示例（静态展示） */
+  .tip-wrap { position: relative; }
+  .tooltip {
+    position: absolute; left: 100%; top: -6px; margin-left: 10px; z-index: 5;
+    width: 210px; background: #ffffff; border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(30,58,55,.16); padding: 8px 10px;
+    font-size: 11px; color: var(--ink-2); line-height: 1.7; white-space: pre-line;
+  }
+  .tooltip b { color: var(--ink); }
+
+  .sb-settings { padding: 8px 16px; font-size: 13px; color: var(--ink-2); border-top: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
+
+  /* 对比：现状 cost-meter（更高） */
+  .cm-box { margin: 8px 8px 6px; font-size: 12px; color: var(--ink-2); }
+  .cm-row { display: flex; justify-content: space-between; padding: 7px 10px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); margin-bottom: 6px; }
+  .cm-sub { font-size: 11px; color: var(--ink-3); }
+
+  /* ============ 场景二：设置页 ============ */
+  .settings {
+    width: 640px; background: var(--mint-bg); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; box-shadow: 0 8px 28px rgba(30,58,55,.10);
+    display: flex; min-height: 560px;
+  }
+  .st-nav { width: 148px; border-right: 1px solid var(--line); padding: 14px 8px; background: var(--mint-bg-2); }
+  .st-nav .item { padding: 7px 10px; font-size: 12.5px; border-radius: 7px; color: var(--ink-2); margin-bottom: 2px; }
+  .st-nav .item.active { background: var(--card); color: var(--ink); font-weight: 600; }
+  .st-main { flex: 1; padding: 18px 20px; }
+  .st-main h3 { font-size: 15px; margin-bottom: 4px; }
+  .st-main .desc { font-size: 12px; color: var(--ink-3); margin-bottom: 14px; }
+
+  .pcard {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 12px 14px; margin-bottom: 12px;
+  }
+  .pcard .head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .pcard .head .name { font-size: 13.5px; font-weight: 700; }
+  .badge { font-size: 10.5px; padding: 1px 7px; border-radius: 99px; background: var(--mint-bg-2); color: var(--ink-2); border: 1px solid var(--line); }
+  .badge.cookie { background: #fbf3e2; color: #8a6414; border-color: #ecd9a8; }
+  .st-ok, .st-none { font-size: 11px; margin-left: auto; display: flex; align-items: center; gap: 5px; }
+  .st-ok { color: var(--brand); } .st-none { color: var(--ink-3); }
+  .st-ok i, .st-none i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .st-ok i { background: var(--brand); } .st-none i { background: var(--ink-3); }
+
+  .keyrow { display: flex; gap: 6px; margin-bottom: 8px; }
+  .keyrow input, .keyrow textarea {
+    flex: 1; font-size: 12.5px; padding: 7px 10px; border-radius: 7px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    font-family: ui-monospace, Consolas, monospace; outline: none;
+  }
+  .keyrow input:focus, .keyrow textarea:focus { border-color: var(--brand); }
+  .keyrow textarea { min-height: 56px; resize: vertical; }
+  .btn {
+    font-size: 12px; padding: 7px 12px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--mint-bg); color: var(--ink-2); white-space: nowrap;
+  }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn:hover { filter: brightness(.97); }
+  .meta { font-size: 11.5px; color: var(--ink-3); line-height: 1.8; }
+  .meta b { color: var(--ink-2); font-weight: 600; }
+  .meta .ok { color: var(--brand); }
+
+  .global { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--ink-2);
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; }
+  .global select { font-size: 12px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
+</style>
+</head>
+<body>
+
+<!-- ============ 场景一 A：新设计（紧凑） ============ -->
+<div>
+  <h2 class="stage">① 侧边栏底部 · 新设计（紧凑 2×2 · 无标题行 · 点击磁贴刷新 · 总高 ≈88px）</h2>
+  <div class="sidebar">
+    <div class="sb-top">deepseek <span style="font-size:10px;color:var(--ink-3)">HARNESS</span></div>
+    <div class="sb-item">＋ 新建任务</div>
+    <div class="sb-item">☰ 扩展管理</div>
+    <div class="sb-item">🕐 定时任务</div>
+    <div class="sb-filler" style="margin-top:8px">任务 / 频道</div>
+    <div class="sb-item">📁 daix-gui</div>
+    <div class="sb-item">📁 workbench</div>
+    <div class="sb-spacer"></div>
+
+    <!-- 费用条 -->
+    <div class="fee">
+      <div class="fee-grid">
+        <div class="tile" title="">
+          <div class="row"><span class="name">Z.ai</span><span class="val num">1%</span></div>
+          <div class="bar"><i style="width:1%"></i></div>
+        </div>
+        <div class="tile tip-wrap">
+          <div class="row"><span class="name">Kimi</span><span class="val num">0%</span></div>
+          <div class="bar"><i style="width:0.5%"></i></div>
+          <div class="tooltip"><b>Kimi / Moonshot</b>
+周窗已用 0% · 重置 09-22 12:00
+5h 窗已用 3% · 重置 14:05
+凭据：环境变量 KIMI_CODING_API_KEY
+12:30 更新</div>
+        </div>
+        <div class="tile">
+          <div class="row"><span class="name">DeepSeek</span><span class="val num">¥8.20</span></div>
+          <div class="sub">余额 · 含赠 ¥2.00</div>
+        </div>
+        <div class="tile nokey">
+          <div class="row"><span class="name">MiMo</span><span class="val">— ⚙</span></div>
+          <div class="sub">未配置 Cookie</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sb-settings">⚙ 设置</div>
+  </div>
+</div>
+
+<!-- ============ 场景一 B：异常状态 ============ -->
+<div>
+  <h2 class="stage">② 状态变体：过期 / 错误 / 加载中</h2>
+  <div class="sidebar">
+    <div class="sb-top">deepseek <span style="font-size:10px;color:var(--ink-3)">HARNESS</span></div>
+    <div class="sb-spacer" style="min-height:200px"></div>
+    <div class="fee">
+      <div class="fee-grid">
+        <div class="tile stale">
+          <div class="row"><span class="name">Z.ai</span><span class="val num">⏱ 1%</span></div>
+          <div class="bar"><i style="width:1%"></i></div>
+        </div>
+        <div class="tile error">
+          <div class="row"><span class="name">Kimi</span><span class="val">!</span></div>
+          <div class="sub">Key 无效 (401)</div>
+        </div>
+        <div class="tile">
+          <div class="row"><span class="name">DeepSeek</span></div>
+          <div class="skel" style="width:70%"></div>
+        </div>
+        <div class="tile warn-hi">
+          <div class="row"><span class="name">MiMo</span><span class="val num">92%</span></div>
+          <div class="bar"><i class="crit" style="width:92%"></i></div>
+        </div>
+      </div>
+    </div>
+    <div class="sb-settings">⚙ 设置</div>
+  </div>
+
+  <h2 class="stage" style="margin-top:24px">③ 对比：现有 cost-meter 底部（约 150px）</h2>
+  <div class="sidebar">
+    <div class="sb-spacer" style="min-height:60px"></div>
+    <div class="cm-box">
+      <div class="cm-row"><span>余额 ↗</span><span class="num">¥49.12</span></div>
+      <div class="cm-row" style="flex-direction:column;align-items:flex-start;gap:2px">
+        <span>Z.ai / 智谱 GLM Coding Plan</span>
+        <span class="cm-sub num">5h ················ 1%</span>
+      </div>
+      <div class="cm-row" style="flex-direction:column;align-items:flex-start;gap:2px">
+        <span>Kimi / Moonshot</span>
+        <span class="cm-sub num">300time ·········· 0%</span>
+      </div>
+    </div>
+    <div class="sb-settings">⚙ 设置</div>
+  </div>
+</div>
+
+<!-- ============ 场景二：配置页 ============ -->
+<div>
+  <h2 class="stage">④ 配置页：设置 → 费用展示</h2>
+  <div class="settings">
+    <div class="st-nav">
+      <div class="item">常规</div>
+      <div class="item">模型</div>
+      <div class="item">插件</div>
+      <div class="item active">💰 费用展示</div>
+      <div class="item">关于</div>
+    </div>
+    <div class="st-main">
+      <h3>费用展示</h3>
+      <div class="desc">只保存到内存，进程重启后自动回落环境变量。Key 仅发往各家官方域名。</div>
+
+      <div class="pcard">
+        <div class="head"><span class="name">Z.ai / 智谱 GLM Coding Plan</span><span class="badge">订阅配额</span><span class="st-ok"><i></i>正常</span></div>
+        <div class="keyrow">
+          <input type="password" placeholder="未设置，将使用环境变量 ZAI_API_KEY">
+          <button class="btn primary">保存</button><button class="btn">测试</button><button class="btn">清除</button>
+        </div>
+        <div class="meta">当前来源：<b>环境变量 BIGMODEL_API_KEY</b>（自定义未设置）<br>
+        Coding Plan 专属 Key，z.ai / bigmodel.cn 控制台获取 · 最近测试：<span class="ok">5h 窗已用 1% · 12:30 ✓</span></div>
+      </div>
+
+      <div class="pcard">
+        <div class="head"><span class="name">Kimi / Moonshot</span><span class="badge">配额 + 余额</span><span class="st-ok"><i></i>正常</span></div>
+        <div class="keyrow">
+          <input type="password" value="sk-kimi-············a1b2">
+          <button class="btn primary">保存</button><button class="btn">测试</button><button class="btn">清除</button>
+        </div>
+        <div class="meta">当前来源：<b>自定义 Key（sk-…a1b2）</b><br>
+        订阅 Key（sk-kimi-*）显示周窗/5h 配额；开放平台 Key 只显示 PAYG 余额</div>
+      </div>
+
+      <div class="pcard">
+        <div class="head"><span class="name">DeepSeek</span><span class="badge">余额</span><span class="st-ok"><i></i>正常</span></div>
+        <div class="keyrow">
+          <input type="password" placeholder="未设置，将使用环境变量 DEEPSEEK_API_KEY">
+          <button class="btn primary">保存</button><button class="btn">测试</button><button class="btn">清除</button>
+        </div>
+        <div class="meta">当前来源：<b>环境变量 DEEPSEEK_API_KEY</b> · 仅请求官方 api.deepseek.com</div>
+      </div>
+
+      <div class="pcard">
+        <div class="head"><span class="name">MiMo / 小米</span><span class="badge cookie">需 Cookie</span><span class="st-none"><i></i>未配置</span></div>
+        <div class="keyrow">
+          <textarea placeholder="粘贴控制台 Cookie 头（需含 api-platform_serviceToken 与 userId）"></textarea>
+        </div>
+        <div class="keyrow" style="justify-content:flex-end">
+          <button class="btn primary">保存</button><button class="btn">测试</button><button class="btn">清除</button>
+        </div>
+        <div class="meta">MiMo 无 API-Key 查询端点：登录 platform.xiaomimimo.com → 控制台 → F12 网络面板复制 Cookie 头</div>
+      </div>
+
+      <div class="global">
+        自动刷新间隔
+        <select><option>5 分钟</option><option>1 分钟</option><option>15 分钟</option><option>手动</option></select>
+        <span style="flex:1"></span>
+        <button class="btn">全部刷新 ↻</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
