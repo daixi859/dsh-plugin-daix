@@ -24,7 +24,7 @@ window.__ModuleLoader__.load({
     var css = `
 .fp-root{display:block;width:100%}
 .fp-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:4px 0 6px}
-.fp-tile{position:relative;display:flex;flex-direction:column;justify-content:space-between;height:40px;padding:3px 8px 5px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.04));cursor:pointer;user-select:none;transition:background .12s;text-align:left;border:none;width:100%;font:inherit;line-height:1;overflow:hidden;box-sizing:border-box}
+.fp-tile{position:relative;display:flex;flex-direction:column;justify-content:space-between;height:40px;padding:3px 8px 5px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.04));cursor:pointer;user-select:none;transition:background .12s;text-align:left;border:none;width:100%;font:inherit;line-height:1;box-sizing:border-box}
 .fp-tile:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.08))}
 .fp-tile.dim{opacity:.55}
 .fp-tile.busy .fp-val{animation:fp-pulse 1s ease-in-out infinite}
@@ -39,6 +39,8 @@ window.__ModuleLoader__.load({
 .fp-fill.crit{background:#d05b4b}
 .fp-tip{display:none;position:absolute;bottom:calc(100% + 6px);left:0;z-index:60;min-width:190px;max-width:250px;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-line-1,rgba(0,0,0,.12));box-shadow:0 8px 24px rgba(0,0,0,.16);font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary,#4d6763);white-space:pre-line;cursor:default;text-align:left;font-weight:400}
 .fp-tile:hover .fp-tip{display:block}
+/* 右列磁贴的 tooltip 反向朝左展开，避免溢出侧栏右缘被裁剪 */
+.fp-grid .fp-tile:nth-child(even) .fp-tip{left:auto;right:0}
 .fp-skel{height:8px;border-radius:4px;background:linear-gradient(90deg,rgba(0,0,0,.06) 25%,rgba(0,0,0,.12) 50%,rgba(0,0,0,.06) 75%);background-size:200% 100%;animation:fp-shimmer 1.4s infinite}
 @keyframes fp-shimmer{to{background-position:-200% 0}}
 .fp-rail{display:flex;flex-direction:column;gap:2px;padding:4px 0;width:100%;align-items:center}
@@ -131,7 +133,8 @@ window.__ModuleLoader__.load({
       if (Array.isArray(p.windows)) {
         for (var i = 0; i < p.windows.length; i++) {
           var w = p.windows[i];
-          var line = w.label + " 已用 " + w.percent + "%";
+          var prefix = w.monthly ? (w.label + "消耗 ") : (w.label + " 已用 ");
+          var line = prefix + w.percent + "%";
           if (w.resetsAt) line += " · 重置 " + fmtTime(w.resetsAt);
           if (w.detail) line += " · " + w.detail;
           lines.push(line);

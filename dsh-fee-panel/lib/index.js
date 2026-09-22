@@ -35,12 +35,12 @@ const PROVIDERS = [
   {
     id: "zai", label: "Z.ai / 智谱 GLM", short: "Z.ai", kindLabel: "订阅配额", inputType: "key",
     customRef: "FEEPANEL_ZAI_API_KEY", envRefs: ["ZAI_API_KEY", "BIGMODEL_API_KEY"],
-    hint: "Coding Plan 专属 Key（z.ai / bigmodel.cn 控制台），两域 Key 不互通，失败时自动换域重试。",
+    hint: "Coding Plan 专属 Key（z.ai / bigmodel.cn 控制台），两域 Key 不互通，失败时自动换域重试。悬停显示 5h/周窗口与月度工具额度（月度重置时间）。",
   },
   {
     id: "kimi", label: "Kimi / Moonshot", short: "Kimi", kindLabel: "配额+余额", inputType: "key",
     customRef: "FEEPANEL_KIMI_API_KEY", envRefs: ["KIMI_CODING_API_KEY", "MOONSHOT_API_KEY", "KIMI_API_KEY"],
-    hint: "订阅 Key（sk-kimi-*）显示周窗/5h 配额；开放平台 Key（sk-*）显示 PAYG 余额。",
+    hint: "订阅 Key（sk-kimi-*）悬停显示 5h 窗口与月度总消耗（月度重置日期）；开放平台 Key（sk-*）显示 PAYG 余额。",
   },
   {
     id: "deepseek", label: "DeepSeek", short: "DS", kindLabel: "余额", inputType: "key",
@@ -165,6 +165,22 @@ function throwIfBodyAuthError(data, who) {
 
 // ── 各家 fetcher（纯解析，错误均为软错误）─────────────────────────────────────
 
+/** 大数缩写：>=1e8 亿、>=1e4 万，其余原样。 */
+function fmtCnt(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "";
+  if (Math.abs(n) >= 1e8) return (Math.round((n / 1e8) * 10) / 10) + "亿";
+  if (Math.abs(n) >= 1e4) return (Math.round((n / 1e4) * 10) / 10) + "万";
+  return String(Math.round(n * 10) / 10);
+}
+
+/**
+ * z.ai 监控端点 limits 解析（2026-09 实测响应）：
+ *  - TOKENS_LIMIT unit 3=小时档(number=5→5h)、6=周档；CREDIT_LIMIT 同语义（Lite Credit）。
+ *  - TIME_LIMIT（实测 unit 5 number 1）= MCP/工具调用月度额度，含 currentValue/usage/
+ *    remaining/usageDetails 与月度 nextResetTime —— Tooltip 的「月度工具消耗」行。
+ *  - token 月度总消耗官方不提供；unit 缺失条目仍按重置时间排序兜底补位 5h/周。
+ */
 function parseZaiWindows(data) {
   const limits = data && data.data && Array.isArray(data.data.limits) ? data.data.limits : null;
   if (limits === null) return null;
@@ -172,23 +188,41 @@ function parseZaiWindows(data) {
   const rest = [];
   for (const item of limits) {
     if (item === null || typeof item !== "object") continue;
-    if (item.type !== "TOKENS_LIMIT" && item.type !== "CREDIT_LIMIT") continue;
+    if (item.type !== "TOKENS_LIMIT" && item.type !== "CREDIT_LIMIT" && item.type !== "TIME_LIMIT") continue;
     const pct = item.percentage !== undefined ? clampPct(item.percentage) : null;
     if (pct === null) continue;
     const resetsAt = resetIso(item.nextResetTime);
     const unit = Number(item.unit);
-    if (unit === 3 && named.fiveHour === undefined) named.fiveHour = { label: "5h", percent: pct, resetsAt };
-    else if (unit === 6 && named.weekly === undefined) named.weekly = { label: "周", percent: pct, resetsAt };
-    else if (!Number.isFinite(unit)) rest.push({ percent: pct, resetsAt, ms: Number(item.nextResetTime) });
+    if (item.type === "TIME_LIMIT") {
+      if (named.monthlyTool === undefined) {
+        const win = { label: "月度工具", percent: pct, resetsAt, monthly: true };
+        const used = Number(item.currentValue);
+        const total = Number(item.usage);
+        if (Number.isFinite(used) && Number.isFinite(total) && total > 0) {
+          win.detail = fmtCnt(used) + " / " + fmtCnt(total) + " 次";
+        }
+        named.monthlyTool = win;
+      }
+      continue;
+    }
+    const usedRaw = Number(item.currentValue);
+    const totalRaw = Number(item.usage);
+    const detail = Number.isFinite(usedRaw) && Number.isFinite(totalRaw) && totalRaw > 0
+      ? "已 " + fmtCnt(usedRaw) + " / " + fmtCnt(totalRaw)
+      : "";
+    if (unit === 3 && named.fiveHour === undefined) named.fiveHour = { label: "5h", percent: pct, resetsAt, detail: detail || undefined };
+    else if (unit === 6 && named.weekly === undefined) named.weekly = { label: "周", percent: pct, resetsAt, detail: detail || undefined };
+    else if (!Number.isFinite(unit)) rest.push({ percent: pct, resetsAt, ms: Number(item.nextResetTime), detail });
   }
   rest.sort((a, b) => (a.ms > 0 ? a.ms : 0) - (b.ms > 0 ? b.ms : 0));
   for (const item of rest) {
-    if (named.fiveHour === undefined) named.fiveHour = { label: "5h", percent: item.percent, resetsAt: item.resetsAt };
-    else if (named.weekly === undefined) named.weekly = { label: "周", percent: item.percent, resetsAt: item.resetsAt };
+    if (named.fiveHour === undefined) named.fiveHour = { label: "5h", percent: item.percent, resetsAt: item.resetsAt, detail: item.detail || undefined };
+    else if (named.weekly === undefined) named.weekly = { label: "周", percent: item.percent, resetsAt: item.resetsAt, detail: item.detail || undefined };
   }
   const windows = [];
   if (named.fiveHour !== undefined) windows.push(named.fiveHour);
   if (named.weekly !== undefined) windows.push(named.weekly);
+  if (named.monthlyTool !== undefined) windows.push(named.monthlyTool);
   return windows.length > 0 ? windows : null;
 }
 
@@ -212,12 +246,31 @@ async function fetchZai(ctx, key) {
   throw lastError || new Error("查询失败");
 }
 
-async function fetchKimi(ctx, key) {
-  if (key.indexOf("sk-kimi-") === 0) {
-    const data = await httpGet(ctx, "https://api.kimi.com/coding/v1/usages",
-      ["Authorization: Bearer " + key, "User-Agent: KimiCLI/1.6", "Accept: application/json"]);
-    throwIfBodyAuthError(data, "Kimi ");
-    const windows = [];
+/**
+ * Kimi 订阅 usages 解析。实测主形态（2026-09）：
+ *   { usages: { limit_5h: {used_ratio, reset_time},
+ *               limit_month_total: {used_ratio, reset_time}(月度总消耗),
+ *               limit_month_code: {...}(月度代码部分,与 total 常相同,不展示) },
+ *     limits: [{ window: {duration:300, timeUnit:"TIME_UNIT_MINUTE"}, detail: {...}}] }
+ * 兜底兼容 cost-meter 时代的 { usage } / limits 形态。无可解析窗口返回 null。
+ */
+function parseKimiSubscriptionWindows(data) {
+  const windows = [];
+  const usages = data && data.usages;
+  if (usages !== null && typeof usages === "object" && !Array.isArray(usages)) {
+    const addUsage = (field, label, monthly) => {
+      const u = usages[field];
+      if (u === null || typeof u !== "object" || Array.isArray(u)) return;
+      const ratio = Number(u.used_ratio);
+      if (!Number.isFinite(ratio)) return;
+      const win = { label, percent: clampPct(ratio * 100), resetsAt: resetIso(u.reset_time) };
+      if (monthly === true) win.monthly = true;
+      windows.push(win);
+    };
+    addUsage("limit_5h", "5h", false);
+    addUsage("limit_month_total", "月度总", true);
+  }
+  if (windows.length === 0) {
     const usage = data && data.usage;
     if (usage !== null && typeof usage === "object") {
       const pct = ratioPct(usage.used, usage.limit, usage.remaining);
@@ -231,11 +284,22 @@ async function fetchKimi(ctx, key) {
       if (pct === null) continue;
       const duration = Number(row.window && row.window.duration);
       const unitRaw = String((row.window && row.window.timeUnit) || "").toLowerCase();
-      const unit = unitRaw.indexOf("hour") === 0 ? "h" : unitRaw.indexOf("day") === 0 ? "d" : unitRaw.indexOf("week") === 0 ? "w" : unitRaw.indexOf("minute") === 0 ? "m" : "";
+      const unit = unitRaw.indexOf("hour") >= 0 ? "h" : unitRaw.indexOf("day") >= 0 ? "d"
+        : unitRaw.indexOf("week") >= 0 ? "w" : unitRaw.indexOf("minute") >= 0 ? "m" : "";
       const label = Number.isFinite(duration) && duration > 0 && unit !== "" ? String(duration) + unit : "窗口";
       windows.push({ label, percent: pct, resetsAt: resetIso(detail.resetTime) });
     }
-    if (windows.length === 0) throw new Error("响应中无可解析的配额窗口");
+  }
+  return windows.length > 0 ? windows : null;
+}
+
+async function fetchKimi(ctx, key) {
+  if (key.indexOf("sk-kimi-") === 0) {
+    const data = await httpGet(ctx, "https://api.kimi.com/coding/v1/usages",
+      ["Authorization: Bearer " + key, "User-Agent: KimiCLI/1.6", "Accept: application/json"]);
+    throwIfBodyAuthError(data, "Kimi ");
+    const windows = parseKimiSubscriptionWindows(data);
+    if (windows === null) throw new Error("响应中无可解析的配额窗口");
     const five = windows.find((w) => w.label === "5h");
     return { quota: five || windows[0], windows, balanceText: null, balanceDetail: null };
   }
