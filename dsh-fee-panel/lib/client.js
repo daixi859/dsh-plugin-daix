@@ -8,8 +8,9 @@
 //   POST /plugins/fee-panel/set-key      { id, value }
 //   POST /plugins/fee-panel/set-enabled  { id, enabled }
 // UI：
-//   - sidebar.footer.action（id: fee-panel）：紧凑 2×2 磁贴，无标题行，
-//     点击磁贴 = 刷新该供应商；hover 出 Tooltip；窄轨（wide=false）退化为迷你竖排。
+//   - sidebar.footer.action（id: fee-panel）：单行紧凑磁贴（最多 4 个/行，空间不足
+//     自动收窄、隐藏百分比只留进度条/余额），无标题行，点击磁贴 = 刷新该供应商；
+//     hover 出 Tooltip；窄轨（wide=false）退化为迷你竖排。
 //   - settings.section（id: fee-panel）：顶部「侧栏显示」勾选 + 四张供应商凭据卡片。
 
 window.__ModuleLoader__.load({
@@ -23,24 +24,28 @@ window.__ModuleLoader__.load({
     // ── 样式注入（原生 DOM 模式，随插件生命周期常驻）────────────────────────
     var css = `
 .fp-root{display:block;width:100%}
-.fp-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:4px 0 6px}
-.fp-tile{position:relative;display:flex;flex-direction:column;justify-content:space-between;height:40px;padding:3px 8px 5px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.04));cursor:pointer;user-select:none;transition:background .12s;text-align:left;border:none;width:100%;font:inherit;line-height:1;box-sizing:border-box}
+.fp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(52px,1fr));gap:5px;margin:4px 0 6px}
+.fp-tile{position:relative;display:flex;flex-direction:column;justify-content:space-between;height:40px;padding:3px 8px 5px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.04));cursor:pointer;user-select:none;transition:background .12s;text-align:left;border:none;width:100%;font:inherit;line-height:1;box-sizing:border-box;container-type:inline-size}
 .fp-tile:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.08))}
 .fp-tile.dim{opacity:.55}
 .fp-tile.busy .fp-val{animation:fp-pulse 1s ease-in-out infinite}
 @keyframes fp-pulse{50%{opacity:.3}}
-.fp-row{display:flex;flex-wrap:nowrap;align-items:center;justify-content:space-between;gap:4px;min-width:0;line-height:17px;height:17px}
+.fp-row{display:flex;flex-wrap:nowrap;align-items:center;justify-content:space-between;gap:4px;min-width:0;line-height:17px;height:17px;overflow:hidden}
 .fp-name{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary,#4d6763);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
 .fp-val{font-size:12px;font-weight:700;color:var(--dsw-alias-label-primary,#1e3a37);font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+.fp-kind{font-size:9.5px;font-weight:500;color:var(--dsw-alias-label-tertiary,#7d938f);white-space:nowrap;flex:none}
+.fp-bal{font-size:11px;font-weight:700;color:var(--dsw-alias-label-primary,#1e3a37);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:14px;height:14px;margin-top:2px}
+/* 磁贴内容区过窄放不下「名称+数值」：隐藏百分比/右侧标签，仅留名称与进度条/余额 */
+@container (max-width:54px){.fp-val,.fp-kind{display:none}}
 .fp-sub{font-size:10px;color:var(--dsw-alias-label-tertiary,#7d938f);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:12px;height:12px;margin-top:1px}
 .fp-bar{height:3px;border-radius:2px;background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.08));overflow:hidden;margin-top:4px;flex:none}
 .fp-fill{height:100%;border-radius:2px;background:var(--dsw-alias-brand-primary,#2f9e8f)}
 .fp-fill.warn{background:#d99a2b}
 .fp-fill.crit{background:#d05b4b}
-.fp-tip{display:none;position:absolute;bottom:calc(100% + 6px);left:0;z-index:60;min-width:190px;max-width:250px;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-line-1,rgba(0,0,0,.12));box-shadow:0 8px 24px rgba(0,0,0,.16);font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary,#4d6763);white-space:pre-line;cursor:default;text-align:left;font-weight:400}
+.fp-tip{display:none;position:absolute;bottom:calc(100% + 6px);left:0;z-index:60;min-width:170px;max-width:220px;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-line-1,rgba(0,0,0,.12));box-shadow:0 8px 24px rgba(0,0,0,.16);font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary,#4d6763);white-space:pre-line;cursor:default;text-align:left;font-weight:400}
 .fp-tile:hover .fp-tip{display:block}
-/* 右列磁贴的 tooltip 反向朝左展开，避免溢出侧栏右缘被裁剪 */
-.fp-grid .fp-tile:nth-child(even) .fp-tip{left:auto;right:0}
+/* 单行多磁贴：左半从左展开、右半（含仅 2 个时的末位）向左收，避免溢出侧栏右缘被裁剪 */
+.fp-grid .fp-tile:nth-child(n+3) .fp-tip,.fp-grid .fp-tile:nth-child(2):last-child .fp-tip{left:auto;right:0}
 .fp-skel{height:8px;border-radius:4px;background:linear-gradient(90deg,rgba(0,0,0,.06) 25%,rgba(0,0,0,.12) 50%,rgba(0,0,0,.06) 75%);background-size:200% 100%;animation:fp-shimmer 1.4s infinite}
 @keyframes fp-shimmer{to{background-position:-200% 0}}
 .fp-rail{display:flex;flex-direction:column;gap:2px;padding:4px 0;width:100%;align-items:center}
@@ -129,22 +134,19 @@ window.__ModuleLoader__.load({
     }
 
     function tipText(p) {
-      var lines = [p.label + " · " + p.kindLabel];
+      var lines = [p.label];
       if (Array.isArray(p.windows)) {
         for (var i = 0; i < p.windows.length; i++) {
           var w = p.windows[i];
-          var prefix = w.monthly ? (w.label + "消耗 ") : (w.label + " 已用 ");
-          var line = prefix + w.percent + "%";
+          var line = w.label + " " + w.percent + "%";
           if (w.resetsAt) line += " · 重置 " + fmtTime(w.resetsAt);
           if (w.detail) line += " · " + w.detail;
           lines.push(line);
         }
       }
       if (p.balanceText) lines.push("余额 " + p.balanceText + (p.balanceDetail ? "（" + p.balanceDetail + "）" : ""));
-      lines.push("凭据：" + credText(p.credential));
       if (p.error) lines.push("错误：" + p.error);
       if (p.updatedAt) lines.push("更新 " + fmtTime(p.updatedAt));
-      lines.push("点击刷新 · 配置：设置 → 费用展示");
       return lines.join("\n");
     }
 
@@ -178,7 +180,9 @@ window.__ModuleLoader__.load({
       var p = props.p;
       var busy = props.busy;
       var value = null;
+      var kind = null;
       var sub = null;
+      var subClass = "fp-sub";
       var bar = null;
       var dim = false;
       if (p.status === "ok") {
@@ -187,8 +191,9 @@ window.__ModuleLoader__.load({
           bar = React.createElement("div", { className: "fp-bar" },
             React.createElement("div", { className: "fp-fill " + barClass(p.quota.percent), style: { width: Math.max(2, p.quota.percent) + "%" } }));
         } else if (p.balanceText) {
-          value = p.balanceText;
-          sub = p.balanceDetail || "余额";
+          kind = "余额";
+          sub = p.balanceText;
+          subClass = "fp-bal";
         } else {
           value = "—";
         }
@@ -199,7 +204,9 @@ window.__ModuleLoader__.load({
           bar = React.createElement("div", { className: "fp-bar" },
             React.createElement("div", { className: "fp-fill " + barClass(p.quota.percent), style: { width: Math.max(2, p.quota.percent) + "%" } }));
         } else if (p.balanceText) {
-          value = "⏱ " + p.balanceText;
+          value = "⏱";
+          sub = p.balanceText;
+          subClass = "fp-bal";
         } else {
           value = "!";
           sub = "刷新失败";
@@ -210,11 +217,12 @@ window.__ModuleLoader__.load({
       } else {
         value = "…";
       }
-      var children = [React.createElement("div", { className: "fp-row" },
-        React.createElement("span", { className: "fp-name" }, p.short),
-        React.createElement("span", { className: "fp-val" }, value))];
+      var row = [React.createElement("span", { className: "fp-name", key: "n" }, p.short)];
+      if (kind !== null) row.push(React.createElement("span", { className: "fp-kind", key: "k" }, kind));
+      if (value !== null) row.push(React.createElement("span", { className: "fp-val", key: "v" }, value));
+      var children = [React.createElement("div", { className: "fp-row" }, row)];
       if (bar !== null) children.push(bar);
-      else if (sub !== null) children.push(React.createElement("div", { className: "fp-sub" }, sub));
+      else if (sub !== null) children.push(React.createElement("div", { className: subClass }, sub));
       children.push(React.createElement("div", { className: "fp-tip" }, tipText(p)));
       return React.createElement("button", {
         type: "button",

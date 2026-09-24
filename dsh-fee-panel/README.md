@@ -2,8 +2,8 @@
 
 侧边栏底部紧凑费用面板（Dynamic plugin `feebar-1` 的项目固定版，样式/行为 = pkg-5）。
 
-- **位置**：左侧边栏底部（`sidebar.footer.action`），2×2 磁贴，无标题行，**点击磁贴 = 刷新该供应商**
-- **供应商**：Z.ai（5h/周配额）、Kimi（订阅周窗/5h 或 PAYG 余额）、DeepSeek（余额）、MiMo（余额，套餐% 在 Tooltip）
+- **位置**：左侧边栏底部（`sidebar.footer.action`），单行磁贴（最多 4 个/行，空间不足自动收窄并隐藏百分比），无标题行，**点击磁贴 = 刷新该供应商**
+- **供应商**：Z.ai（5h/周配额）、Kimi（订阅周窗/5h 或 PAYG 余额）、DeepSeek（余额）、MiMo（余额，套餐% 在 Tooltip）；余额类供应商金额显示在磁贴下排，Tooltip 仅保留窗口明细/重置时间/错误/更新时间
 - **配置**：设置 → 费用展示 —— 顶部勾选控制侧栏显示哪些（持久化），下方配置各家的 Key / MiMo Cookie
 - **凭据**：自定义 Key 写本机凭据库（`FEEPANEL_*` 引用，持久）；未设置时自动回落环境变量：
   `ZAI_API_KEY`/`BIGMODEL_API_KEY`、`KIMI_CODING_API_KEY`/`MOONSHOT_API_KEY`/`KIMI_API_KEY`、
