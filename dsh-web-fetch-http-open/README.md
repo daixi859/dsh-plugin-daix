@@ -53,6 +53,29 @@ bundle patch（`cordis.patch.yml`）会：
 `maxBodyChars`（默认 100k）、`timeoutMs`（默认 30s）、`maxRedirects`（默认 5）、
 `userAgent`。
 
+## 与 modsearch 共存
+
+`@liustack/modsearch` 的 bundle patch 会把 `web` 行 config **整键覆盖**成只剩
+`searchProvider: modsearch`（patch 按 id 整键替换，不深合并），这会抹掉
+`fetchProvider`，使 `http` / `http-open` 两个可用 fetch provider 冲突，
+`web_fetch` 报 `WEB_PROVIDER_AMBIGUOUS`。
+
+修法：在 profile 用户 patch 层（`~/.dsh/profiles/desktop/cordis.patch.yml`，
+所有 bundle 层之后应用，也是 modsearch 自己注释推荐的"pin any provider back"位置）
+把两个键一起钉住：
+
+```yaml
+- id: web
+  name: "@deepseek-ai/dsh-web"
+  config:
+    searchProvider: modsearch
+    fetchProvider: http-open
+```
+
+注意 `DSH_*` 变量属于 bootstrap-only，不能通过 `~/.dsh/.env` 设置
+`DSH_WEB_FETCH_PROVIDER`，所以用户 patch 层是唯一干净的钉法。改这两个键时
+注意成对修改：换搜索 provider 就同时保留 `fetchProvider: http-open`。
+
 ## 安全提示
 
 公网 IP 校验是防 SSRF 的：模型选择的 URL 不应摸到本机/内网服务。启用本插件即表示
