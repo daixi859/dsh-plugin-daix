@@ -1,0 +1,27 @@
+{
+  "name": "dsh-web-fetch-http-open",
+  "description": "web_fetch 的无 IP 校验 provider：完整复用官方 dsh-web-fetch-http 传输实现（同源重定向/字节与字符上限/charset/超时一致），仅去掉“解析结果必须全是公网 IP”的过滤，使 127.0.0.1 与内网地址可抓取。经 bundle patch 把 web 服务的 fetchProvider 从 http 切换为 http-open；停用本 bundle 即完全还原。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "engines": {
+    "dsh": ">=0.1.5-rc.1"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT"
+}

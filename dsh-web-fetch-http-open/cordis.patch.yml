@@ -1,0 +1,15 @@
+# dsh-web-fetch-http-open bundle patch（每次 boot 随本 bundle 层应用）：
+#   1) 插入本插件行 —— 注册 id=http-open 的 fetch provider；
+#   2) 覆盖 web 服务行 —— fetchProvider: http → http-open。
+# patch 的非 insert 条目按 id 匹配后整键替换同名字段，所以 config 必须整块给出
+# （保留 searchProvider，避免丢掉搜索 provider 配置）。
+# 在插件管理里停用/移除本 bundle 后两条 patch 一并消失，自动还原内置 http provider。
+
+- insert:
+    - id: web-fetch-http-open
+      name: dsh-web-fetch-http-open
+- id: web
+  name: "@deepseek-ai/dsh-web"
+  config:
+    searchProvider: deepseek-official
+    fetchProvider: http-open

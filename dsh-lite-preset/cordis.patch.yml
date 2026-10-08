@@ -1,0 +1,47 @@
+# Agent preset lite：只保留 文件操作 / 命令执行 / 网络 / ask_user_question / skill。
+# 基座服务（ctx.fs、ctx.subprocess、web、skills、attachments）由部署层提供，
+# 这里只挂工具行；用 plugin_manager 安装本 bundle 后，新会话即可在模式选择器中选择。
+- insert:
+    - id: preset-lite
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: lite
+        name: 精简
+        description: 仅文件操作、命令执行、网络、提问与技能工具。
+        order: 5
+        plugins:
+          # 身份提示词，不注册任何模型可见工具
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              suffix: Your working directory is {{cwd}}.
+              prefix: You are a coding agent powered by the {{model}} model.
+          # 命令执行：按平台启用 bash / pwsh
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          # 文件操作：read / write / edit / read_image
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+          # 文件操作：glob / grep
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          # 网络：web_search / web_fetch
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+          # 提问：ask_user_question
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          # 技能：技能目录来源 + skill 工具
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
