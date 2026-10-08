@@ -1,0 +1,25 @@
+/* ---------- Sliding pill: the segmented controls' shared highlight ---------- */
+/* packages/client/src/shared/sliding-pill.ts marks a control with data-dsh-claude-shell-pill and
+   writes the active item's offset and width; this draws one box there and
+   slides it on every later change. The shape and fill belong to each control
+   (view-tabs.css for the conversation view tabs, settings.css for the settings
+   page's tab strip and choice rows), and each control is positioned by its own
+   rules, since one of them is absolutely placed.
+   While the pill is there, the active item's own background gives way to it.
+   The slide ignores the system's reduced-motion request on purpose: a
+   quarter-second move of one small box is how the switch reads, and the user
+   asked for it to always play. */
+body[data-dsh-claude-shell] [data-dsh-claude-shell-pill]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: var(--dsh-claude-shell-pill-w, 0px);
+  transform: translateX(var(--dsh-claude-shell-pill-x, 0px));
+  pointer-events: none;
+  transition: transform 0.24s cubic-bezier(0.22, 0.61, 0.36, 1), width 0.24s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+/* The items paint above the pill, which is the control's first painted box. */
+body[data-dsh-claude-shell] [data-dsh-claude-shell-pill] > * {
+  position: relative;
+  z-index: 1;
+}

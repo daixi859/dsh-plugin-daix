@@ -1,0 +1,7 @@
+{
+  "name": "@dsh-claude-shell/client",
+  "description": "The browser half of dsh-claude-shell: host access, preferences, the scheduler, the observation bus and the frame pipeline, shared parts, the shell's own look and the features",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module"
+}

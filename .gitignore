@@ -6,4 +6,4 @@ node_modules/
 .dsh/
 
 *.log
-.dsh-claude-style
+.dsh-claude-style/

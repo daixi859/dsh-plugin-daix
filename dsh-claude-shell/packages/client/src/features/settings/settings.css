@@ -1,0 +1,357 @@
+/* ---------- Settings dialog: modal panel background ---------- */
+/* In light mode, the host dialog defaults to var(--dsw-alias-bg-layer-2);
+   align the dialog card with the main canvas (#fcfcfb). */
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) :is([class*="settingsArea"] [class*="_panel"], [class*="settingsArea"] [role="dialog"], [class*="_overlay"] > [class*="_panel"]) {
+  background: var(--dsw-alias-bg-base) !important;
+}
+
+/* ---------- Settings dialog: Claude Shell tab icon ---------- */
+/* Replace the host's default settings gear icon on the Claude Shell nav tab
+   with the monochrome Claude starburst icon (black in light mode). */
+body[data-dsh-claude-shell] button[data-dsh-section="claude-shell"] [class*="_navIcon"] {
+  display: none !important;
+}
+
+body[data-dsh-claude-shell] button[data-dsh-section="claude-shell"]::before {
+  content: "";
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background-color: currentColor;
+  -webkit-mask: var(--dsh-claude-shell-image-claude-mark) center / contain no-repeat;
+  mask: var(--dsh-claude-shell-image-claude-mark) center / contain no-repeat;
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) button[data-dsh-section="claude-shell"]::before {
+  background-color: #141413;
+}
+
+/* ---------- Claude Code layout: settings page ---------- */
+/* The skin's own page in the settings dialog and on the plugin page. Its
+   segmented controls reuse the skin's own classes
+   (`.dsh-claude-shell-segments` / `.dsh-claude-shell-segment`), so every segmented control
+   on the page is literally one control rather than a lookalike; the switch and
+   the brand cards are new here. The rows follow the host's own settings rows
+   (ui-chat's PreferenceRow): full width, 16px above and below, a hairline
+   between two rows.
+   No side padding of its own: the host's options column already carries 24px
+   (`.options { padding: 0 24px 24px }`), and a second inset here set the skin's
+   rows 24px inside every other page's. The 16px on top is the host's own row
+   padding, so the page's heading lands where their first row's text does. */
+body[data-dsh-claude-shell] .dsh-claude-shell-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 0 0;
+  box-sizing: border-box;
+  font-family: var(--dsw-font-family);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The segmented control's look, stated once: the tab strip and every choice row
+   are this one control (settings-controls.ts carries its two class names). The
+   track is the group, the item is one choice, and the sliding pill
+   (shared/sliding-pill.css) is the box the active item gives up while the pill
+   covers it — the shape below is where that pill sits. */
+body[data-dsh-claude-shell] .dsh-claude-shell-segments {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--dsw-specific-selector);
+  position: relative;
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) .dsh-claude-shell-segments {
+  background: var(--dsh-claude-shell-chip);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-segment {
+  appearance: none;
+  margin: 0;
+  border: 0;
+  cursor: pointer;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+  padding: 3px 12px;
+  border-radius: 7px;
+  transition: background-color .1s, color .1s;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-segment:hover:not([data-active]) {
+  color: var(--dsw-alias-label-primary);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-segment[data-active] {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) .dsh-claude-shell-segment[data-active] {
+  background: var(--dsw-alias-bg-overlay);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.08);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-segments[data-dsh-claude-shell-pill]::before {
+  top: 2px;
+  bottom: 2px;
+  border-radius: 7px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) .dsh-claude-shell-segments[data-dsh-claude-shell-pill]::before {
+  background: var(--dsw-alias-bg-overlay);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.08);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-segments[data-dsh-claude-shell-pill] > .dsh-claude-shell-segment[data-active] {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* The tab strip is the segmented control itself, stretched across the page so
+   every tab gets an equal share; the open tab's rows follow in their own
+   column. */
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-tabs {
+  display: flex;
+  align-self: stretch;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-tabs > [role="tab"] {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-rows > :first-child {
+  border-top: none;
+}
+
+/* The host's scroller around the page (the settings dialog's options column,
+   the plugin page) always keeps the scrollbar's room: a tab short enough to
+   need no scrollbar then lays out at the same width as one that does. The
+   page marks its nearest scrolling ancestor while it is mounted (settings.ts). */
+body[data-dsh-claude-shell] [data-dsh-claude-shell-settings-scroller] {
+  scrollbar-gutter: stable;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 0;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+/* A row whose control is a segmented control (the row builder marks it) keeps it
+   on the right while the two share one line, and hands it the next line — where
+   it starts at the row's left edge, as it always did — only when it no longer
+   fits beside the text. The text's basis is the whole decision: the control is
+   `flex: none`, so the row wraps exactly when the text's room would fall under
+   this. */
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-row-segment {
+  flex-wrap: wrap;
+  gap: 12px 8px;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-row-segment > .dsh-claude-shell-settings-row-text {
+  flex: 1 1 220px;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 48px;
+}
+
+/* A block row stacks its control under the text — the brand picker's cards need
+   more room than an inline control slot gives. A control keeps its own width;
+   only the brand cards span the row. */
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-row-block {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-row-block > .dsh-claude-shell-settings-row-text {
+  align-self: stretch;
+  padding-right: 0;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-row-block > .dsh-claude-shell-brand-picker {
+  align-self: stretch;
+}
+
+/* The brand picker: one card per brand, the brand's mark above its name. The
+   marks are the same assets the sidebar paints — Claude's clay
+   starburst, DeepSeek's whale in brand blue — declared as custom properties by
+   the generated token sheet, so they read in full colour on either theme. A new
+   brand adds one option in settings-tab-appearance.ts and one [data-brand] rule
+   here. */
+body[data-dsh-claude-shell] .dsh-claude-shell-brand-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-brand-card {
+  appearance: none;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 12px 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color .12s ease;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-brand-card:hover {
+  border-color: var(--dsw-alias-border-l2);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-brand-card:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary, #d97757);
+  outline-offset: 1px;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-brand-card[data-active] {
+  border-color: var(--dsw-alias-brand-primary, #d97757);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-brand-card-logo {
+  width: 32px;
+  height: 32px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-brand-card-logo[data-brand="claude"] {
+  background-image: var(--dsh-claude-shell-image-claude-mark-clay);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-brand-card-logo[data-brand="deepseek"] {
+  background-image: var(--dsh-claude-shell-image-deepseek-mark);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-brand-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* The row title is UI text in the host's row metrics: the sans face, not the
+   serif display face theme/typography.css gives every class naming a title. */
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-row-title {
+  font-family: var(--dsw-font-family);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-row-desc {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-error {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-state-error-primary, #c0392b);
+}
+
+/* The switch borrows the segment track's palette and radius so a page of rows
+   reads as one control set rather than two. */
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-switch {
+  flex: none;
+  appearance: none;
+  margin: 0;
+  border: 0;
+  cursor: pointer;
+  width: 36px;
+  height: 20px;
+  padding: 2px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: var(--dsw-specific-selector);
+  transition: background-color .12s ease;
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) .dsh-claude-shell-settings-switch {
+  background: var(--dsh-claude-shell-chip);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-switch[data-on] {
+  background: var(--dsw-alias-brand-primary, #d97757);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-switch-knob {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  /* A true circle: the page inherits superellipse corners from <html>. */
+  corner-shape: round;
+  background: var(--dsw-alias-bg-overlay, #ffffff);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.18);
+  transition: transform .12s ease;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-switch[data-on] .dsh-claude-shell-settings-switch-knob {
+  transform: translateX(16px);
+}
+
+/* Custom username input: same row rhythm as the switch/segments, but wide
+   enough to read a name and narrow enough not to push the description. */
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-input {
+  flex: none;
+  width: 180px;
+  max-width: 45%;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  outline: none;
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-input:focus {
+  border-color: var(--dsw-alias-brand-primary, #d97757);
+}
+
+body[data-dsh-claude-shell] .dsh-claude-shell-settings-input::placeholder {
+  color: var(--dsw-alias-label-caption);
+}

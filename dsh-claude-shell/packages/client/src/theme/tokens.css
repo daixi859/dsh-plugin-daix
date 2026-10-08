@@ -1,0 +1,84 @@
+/* The canvases the two skin palettes paint onto the host's own structure; under
+   "follow the host" none of them apply. The brand preference is not a colour
+   choice, so nothing here reads it. */
+body[data-dsh-claude-shell][data-dsh-claude-shell-palette="claude"]:not([data-ds-dark-theme]),
+body[data-dsh-claude-shell][data-dsh-claude-shell-palette="deepseek"]:not([data-ds-dark-theme]) {
+  color: var(--dsw-alias-label-primary);
+  background-color: var(--dsh-claude-shell-canvas);
+}
+
+/* The document element sits above the body and cannot read its tokens, so each
+   palette states its own light canvas here. */
+html:has(body[data-dsh-claude-shell][data-dsh-claude-shell-palette="claude"]:not([data-ds-dark-theme])) {
+  background-color: #fcfcfb;
+}
+
+html:has(body[data-dsh-claude-shell][data-dsh-claude-shell-palette="deepseek"]:not([data-ds-dark-theme])) {
+  background-color: #fafbff;
+}
+
+body[data-dsh-claude-shell][data-dsh-claude-shell-palette="claude"]:not([data-ds-dark-theme]) #root,
+body[data-dsh-claude-shell][data-dsh-claude-shell-palette="deepseek"]:not([data-ds-dark-theme]) #root {
+  background-color: var(--dsh-claude-shell-canvas);
+}
+
+body[data-dsh-claude-shell][data-dsh-claude-shell-palette="claude"]:not([data-ds-dark-theme]) :is([data-pane="sidebar"], [class*="sidebarCol"], .dshDesktopSidebarSurface),
+body[data-dsh-claude-shell][data-dsh-claude-shell-palette="deepseek"]:not([data-ds-dark-theme]) :is([data-pane="sidebar"], [class*="sidebarCol"], .dshDesktopSidebarSurface) {
+  --dsw-specific-sidebar-fill: var(--dsh-claude-shell-sidebar-canvas);
+  background: var(--dsh-claude-shell-sidebar-canvas);
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) :is([data-pane="sidebar"], [class*="sidebarCol"], .dshDesktopSidebarSurface) {
+  border-right: 1px solid var(--dsw-alias-border-l1);
+}
+
+body[data-dsh-claude-shell][data-dsh-claude-shell-palette="claude"]:not([data-ds-dark-theme]) :is([data-pane="conversation"], [class*="centerCol"]),
+body[data-dsh-claude-shell][data-dsh-claude-shell-palette="deepseek"]:not([data-ds-dark-theme]) :is([data-pane="conversation"], [class*="centerCol"]) {
+  background: var(--dsh-claude-shell-canvas);
+}
+
+/* The light half of the anchor ink in theme/chrome.css; both leave a host button
+   class (`_linkButton`) to the ink that class states for itself. */
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) a:not([class*="_linkButton"]) {
+  color: var(--dsw-alias-link);
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) a:not([class*="_linkButton"]):hover {
+  color: var(--dsh-claude-shell-link-hover);
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) button[class*="_brand"],
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) button[class*="_primary"],
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) [data-slot="sidebar.settings"] > :is(button, [role="button"]) {
+  background: var(--dsw-alias-button-primary-fill);
+  color: #ffffff;
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) button[class*="_brand"]:hover,
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) button[class*="_primary"]:hover,
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) [data-slot="sidebar.settings"] > :is(button, [role="button"]):hover {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) blockquote {
+  color: var(--dsw-alias-label-secondary);
+  border-left-color: var(--dsw-alias-label-caption);
+  background: rgba(20, 20, 19, 0.04);
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) pre {
+  border-color: var(--dsw-alias-border-l1);
+}
+
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) * {
+  scrollbar-color: var(--dsh-claude-shell-scrollbar) transparent;
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) ::-webkit-scrollbar-thumb {
+  background: var(--dsh-claude-shell-scrollbar);
+}
+
+body[data-dsh-claude-shell]:not([data-ds-dark-theme]) ::-webkit-scrollbar-thumb:hover {
+  background: var(--dsh-claude-shell-scrollbar-hover);
+}

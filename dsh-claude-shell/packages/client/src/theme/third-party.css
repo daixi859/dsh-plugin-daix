@@ -1,0 +1,60 @@
+/* ---------- Third-party repair: dsh-agy-link run_code fallback card ---------- */
+/* The agy-link bridge replaces the host run_code tool card with its own keyed
+   toolview; its non-mirror fallback ships an unstyled header (two bare spans,
+   not even a gap) and a bare pre. Give the header the tool-row rhythm, the
+   tool name the skin's technical-meta mono voice (overriding the editorial
+   serif the `[class*="title"]` rule lends it), the variant label a real
+   pill, and the code preview card padding. */
+body[data-dsh-claude-shell] .agy-tv-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+body[data-dsh-claude-shell] .agy-tv-title {
+  font-family: var(--dsh-claude-shell-font-code);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0;
+  line-height: 24px;
+  color: var(--dsw-alias-label-secondary);
+}
+body[data-dsh-claude-shell] .agy-tv-badge {
+  font-family: var(--dsh-claude-shell-font-code);
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-tertiary);
+}
+body[data-dsh-claude-shell] .agy-tv-pre {
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+
+/* ---------- Third-party repair: dsh-better-sidebar's split dock ---------- */
+/* A split dock puts two panes side by side, each carried as the skin's own card
+   (theme/chrome.css). Between them the dock draws a hairline of its own — the
+   strip it also uses as the drag target — and with the two cards around it the
+   middle reads as one divider through the split. The cards stay two: each keeps
+   its own hairline, radius and elevation, and only the dock's resting line goes
+   (its hover and drag glow is a separate layer and stays, so the seam is still
+   where the split is resized). The two come in toward each other and toward the
+   column's edges, which leaves the same 6px seam between them as at the sides.
+   The columns are numbered by position and the wrapper exists only while the
+   dock is split, so column 0 is the left pane and column 1 the right one
+   whichever way round they were opened. */
+body[data-dsh-claude-shell] [class*="_rightbarCol"] [data-dockkit-split] > [data-dockkit-column] > [data-dockkit-pane] {
+  margin: 6px !important;
+}
+body[data-dsh-claude-shell] [class*="_rightbarCol"] [data-dockkit-split] > [data-dockkit-column="0"] > [data-dockkit-pane] {
+  margin-right: 3px !important;
+}
+body[data-dsh-claude-shell] [class*="_rightbarCol"] [data-dockkit-split] > [data-dockkit-column="1"] > [data-dockkit-pane] {
+  margin-left: 3px !important;
+}
+body[data-dsh-claude-shell] [class*="_rightbarCol"] [data-dockkit-split] > [class*="_divider_"]::before {
+  background: transparent !important;
+}
+

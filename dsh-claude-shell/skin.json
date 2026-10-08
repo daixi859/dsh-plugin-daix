@@ -1,0 +1,11 @@
+{
+  "id": "claude-shell",
+  "name": "Claude Shell",
+  "tagline": "Claude Code 风格的外壳：侧边栏、标签条与标题栏",
+  "accent": "#d97757",
+  "bodyAttr": "data-dsh-claude-shell",
+  "package": "dsh-claude-shell",
+  "wiring": {
+    "id": "ui-skin-claude-shell"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "dsh-claude-shell copy document",
+  "description": "The shape of packages/client/data/model-descriptions.json. The reference rules the schema cannot see (at least two locales) are checked by scripts/model-copy.mjs.",
+  "type": "object",
+  "required": ["fallback", "settings"],
+  "properties": {
+    "version": { "type": "integer" },
+    "fallback": { "description": "The locale id read when the shell language has no line.", "type": "string", "minLength": 1 },
+    "settings": { "$ref": "#/$defs/localizedTable" }
+  },
+  "$defs": {
+    "localized": {
+      "description": "Locale id to a line of copy.",
+      "type": "object",
+      "additionalProperties": { "type": "string", "pattern": "\\S" }
+    },
+    "localizedTable": {
+      "description": "Copy key to its per-locale lines.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/localized" }
+    }
+  }
+}

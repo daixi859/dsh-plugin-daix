@@ -1,0 +1,138 @@
+/* ---------- Popover card: the skin's own floating cards ---------- */
+/* Every card the skin builds (the account drawer, the settings controls'
+   pickers) wears this shell: one fill, hairline, 12px radius, shadow and 6px
+   inset, closed until data-open="true" and opening with the same short rise.
+   Each card's own stylesheet adds only what differs — its placement, its width
+   limits, the corner it grows from — and comes later in the cascade, so it wins
+   where the two overlap. */
+
+/* The same short rise as a one-shot animation, for a surface that MOUNTS
+   instead of toggling `data-open` (the host's own panels, which the skin opens
+   but does not build). Same distance, same duration, same curve as the card
+   transition above, so every surface the skin opens arrives the same way. */
+@keyframes dsh-claude-shell-popover-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-card {
+  background: var(--dsw-alias-bg-overlay, #ffffff);
+  border: 1px solid var(--dsw-alias-border-l1, #e8e6dc);
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(20, 20, 19, 0.12), 0 2px 8px rgba(20, 20, 19, 0.06);
+  padding: 6px;
+  box-sizing: border-box;
+  z-index: 99999;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px) scale(0.98);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-card[data-open="true"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+body[data-dsh-claude-shell][data-ds-dark-theme] .dsh-claude-shell-popover-card {
+  background: var(--dsh-claude-shell-raised);
+  border-color: var(--dsw-alias-border-l2);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+/* Under the host's colours the card's fill is the host's overlay layer, which
+   a theme plugin may turn translucent (a wallpaper's glass): the card blurs
+   what lies behind it, so its rows stay readable over a busy picture. */
+body[data-dsh-claude-shell][data-dsh-claude-shell-palette="host"] .dsh-claude-shell-popover-card {
+  -webkit-backdrop-filter: blur(16px) saturate(1.4) !important;
+  backdrop-filter: blur(16px) saturate(1.4);
+}
+/* ---------- Popover rows ---------- */
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-item {
+  width: 100%;
+  min-height: 32px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: none !important;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #141413);
+  font-size: 13px;
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  box-shadow: none;
+  cursor: pointer;
+  font-family: var(--dsw-font-family);
+  transition: background-color 0.12s ease;
+  box-sizing: border-box;
+}
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-item:hover {
+  background: var(--dsh-claude-shell-hover-bg, rgba(0, 0, 0, 0.08)) !important;
+  color: var(--dsw-alias-label-primary, #141413) !important;
+}
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--dsw-alias-label-secondary, #787672);
+}
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-item-icon svg {
+  width: 16px;
+  height: 16px;
+}
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-item-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+/* A two-line row: the title over a quieter second line, the pair sharing the
+   slack the one-line text block would take. */
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-item-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-item-col .dsh-claude-shell-popover-item-text {
+  font-weight: 500;
+  line-height: 16px;
+}
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-item-desc {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--dsw-alias-label-tertiary, #8f8d84);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The current choice's check, in the accent. A row that carries the mark for
+   every choice keeps it out of the flow until its `hidden` comes off. */
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsw-alias-brand-primary, #d97757);
+}
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-check[hidden] {
+  display: none;
+}
+body[data-dsh-claude-shell] .dsh-claude-shell-popover-item-badge {
+  margin-left: auto !important;
+  font-size: 10px !important;
+  line-height: 14px !important;
+  padding: 0 5px !important;
+  border-radius: 8px !important;
+  background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.08)) !important;
+  color: var(--dsw-alias-label-secondary, #787672) !important;
+}
+
+/* Ensure popover items only display inside the popover */
+body[data-dsh-claude-shell] [class*="footArea"] > .dsh-claude-shell-popover-item {
+  display: none !important;
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@dsh-claude-shell/contracts",
+  "description": "What both halves of dsh-claude-shell share: the host DOM contract, the service shapes it reads, and the preference table and route paths it addresses",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  }
+}

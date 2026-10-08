@@ -1,0 +1,10 @@
+{
+  "name": "@dsh-claude-shell/assets",
+  "description": "The brand marks dsh-claude-shell paints and the fonts it serves, with the generator that decides how each is delivered (D38)",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./assets.mjs"
+  }
+}

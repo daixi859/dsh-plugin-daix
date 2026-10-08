@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "fallback": "en",
+  "settings": {
+    "autoPopoverAccount": {
+      "zh": "仅账号区",
+      "en": "Account only"
+    },
+    "autoPopoverDesc": {
+      "zh": "本插件提供的哪些弹层悬停时便展开。",
+      "en": "Which popovers open on hover. \"Account only\" keeps it to the sidebar account popover; \"All\" adds the permission, model, session-stats and home-page pickers. Off leaves every popover click-to-open."
+    },
+    "autoPopoverOff": {
+      "zh": "关闭",
+      "en": "Off"
+    },
+    "autoPopoverTitle": {
+      "zh": "悬停展开弹层",
+      "en": "Open popovers on hover"
+    },
+    "brandClaude": {
+      "zh": "Claude",
+      "en": "Claude"
+    },
+    "brandDeepseek": {
+      "zh": "DeepSeek",
+      "en": "DeepSeek"
+    },
+    "brandDesc": {
+      "zh": "侧边栏与账号头像画哪一个标记：Claude 的星芒与字标，或 DeepSeek 的鲸鱼。颜色由下面一行「配色」决定。",
+      "en": "Which mark the sidebar and the account avatar draw: the Claude starburst with its wordmark, or DeepSeek's whale. The colours come from the row below."
+    },
+    "brandTitle": {
+      "zh": "品牌标识",
+      "en": "Brand mark"
+    },
+    "collapseDesc": {
+      "zh": "将侧栏底部的设置入口收进账户弹层。",
+      "en": "Fold the sidebar footer's settings entry into the account popover. Off restores the host's footer."
+    },
+    "collapseTitle": {
+      "zh": "折叠侧栏设置区",
+      "en": "Collapse the sidebar settings area"
+    },
+    "headerBandDesc": {
+      "zh": "桌面端把会话标题与顶栏那一行的控件抬进窗口的标题栏，放不下的一侧留在原来的行里。",
+      "en": "On the desktop the session title and the header's controls rise into the window's caption row, and a side without room stays in the header's own row."
+    },
+    "headerBandTitle": {
+      "zh": "标题进入顶栏",
+      "en": "Header in the title bar"
+    },
+    "motionDesc": {
+      "zh": "「随系统」跟随系统的动画设置；「减弱」把动画停在代表帧；「总是」始终播放。",
+      "en": "Follow the system keeps the system's animation setting in charge; Reduced holds animations on their still frame; Always plays them. The background-work ring turns in every setting."
+    },
+    "motionFull": {
+      "zh": "总是",
+      "en": "Always"
+    },
+    "motionReduced": {
+      "zh": "减弱",
+      "en": "Reduced"
+    },
+    "motionSystem": {
+      "zh": "随系统",
+      "en": "Follow the system"
+    },
+    "motionTitle": {
+      "zh": "动画效果",
+      "en": "Animation"
+    },
+    "paletteClaude": {
+      "zh": "Claude",
+      "en": "Claude"
+    },
+    "paletteDeepseek": {
+      "zh": "DeepSeek",
+      "en": "DeepSeek"
+    },
+    "paletteDesc": {
+      "zh": "Claude 与 DeepSeek 是插件自带的两套配色，选中哪一套，界面上所有颜色就由它决定（标记的颜色也在内）。「跟随宿主」把颜色交给 DSH 与其他主题插件，插件只保留版面与控件。",
+      "en": "Claude and DeepSeek are the skin's own two palettes, and each paints every colour it draws. Follow the host leaves the colours to DSH and to other theme plugins (a wallpaper plugin, say), and the skin keeps only its layout and controls."
+    },
+    "paletteHost": {
+      "zh": "跟随宿主",
+      "en": "Follow the host"
+    },
+    "paletteTitle": {
+      "zh": "配色",
+      "en": "Colours"
+    },
+    "tabAppearance": {
+      "zh": "外观",
+      "en": "Appearance"
+    },
+    "tabGeneral": {
+      "zh": "通用",
+      "en": "General"
+    },
+    "tabSidebar": {
+      "zh": "侧栏",
+      "en": "Sidebar"
+    },
+    "title": {
+      "zh": "Claude Shell",
+      "en": "Claude Shell"
+    },
+    "typefaceClaude": {
+      "zh": "开启",
+      "en": "Claude"
+    },
+    "typefaceDesc": {
+      "zh": "使用插件提供的字体。",
+      "en": "Claude uses the Anthropic faces (or the lookalike Inter and Noto Serif when they are missing) and JetBrains Mono for code; Follow the host keeps the fonts DSH or another plugin sets."
+    },
+    "typefaceHost": {
+      "zh": "关闭",
+      "en": "Follow the host"
+    },
+    "typefaceTitle": {
+      "zh": "字体",
+      "en": "Typefaces"
+    },
+    "unavailable": {
+      "zh": "ERROR : 设置存储服务异常，改动不会被保存。",
+      "en": "The settings store is unavailable, so changes will not be saved."
+    },
+    "usernameDesc": {
+      "zh": "用户名会显示在欢迎语和账号行里。",
+      "en": "The name shown in the new-conversation greeting and the account row. Leave empty to use the signed-in account name, then the HDSL launcher name, then the local system user."
+    },
+    "usernamePlaceholder": {
+      "zh": "自动获取",
+      "en": "Auto-detect account or host user"
+    },
+    "usernameTitle": {
+      "zh": "用户名",
+      "en": "Username"
+    },
+    "viewTabsDesc": {
+      "zh": "重绘对话区界面的标签条。",
+      "en": "Redraw the Chat / Trajectory tab strip at the top of the conversation, lifted onto the title's line when it fits. Off restores the host's tab strip."
+    },
+    "viewTabsTitle": {
+      "zh": "重绘标签条",
+      "en": "Chat / Trajectory tabs"
+    }
+  }
+}

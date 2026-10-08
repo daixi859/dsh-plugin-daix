@@ -1,0 +1,7 @@
+{
+  "name": "@dsh-claude-shell/host",
+  "description": "The host half of dsh-claude-shell: the copy document, the webfonts, the OS-user read, the HDSL account routes and session deletion, with the settings Config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module"
+}
