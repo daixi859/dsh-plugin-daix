@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MCP 网关 · 添加服务器草图（dsh-mcp-gate）</title>
+<style>
+  /* ── 页面舞台（仅草图用，正式实现是 DSH 设置页 section + 模态，无此层）──── */
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 16px 64px;font:14px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       background:#0d0d0d}
+  @media (prefers-color-scheme: light){ body{background:#f2f2f2} }
+  .stage{max-width:760px;margin:0 auto}
+
+  /* ── token 映射：在 DSH 内自动命中真实 --dsw-alias-*，否则用近似 fallback ── */
+  .mock{
+    --f-lp:#e9e9e9; --f-ls:#b9b9b9; --f-lt:#8b8b8b; --f-lc:#6d6d6d;
+    --f-b2:#333; --f-b3:#454545; --f-hov:rgba(255,255,255,.06);
+    --f-ok:#4ade80; --f-warn:#fbbf24; --f-err:#f87171; --f-info:#7aa2f7;
+    --f-bg:#161616; --f-btn:#3574f0; --f-btnfg:#fff;
+    --lp:var(--dsw-alias-label-primary,var(--f-lp));
+    --ls:var(--dsw-alias-label-secondary,var(--f-ls));
+    --lt:var(--dsw-alias-label-tertiary,var(--f-lt));
+    --lc:var(--dsw-alias-label-caption,var(--f-lc));
+    --b2:var(--dsw-alias-border-l2,var(--f-b2));
+    --b3:var(--dsw-alias-border-l3,var(--f-b3));
+    --hov:var(--dsw-alias-interactive-bg-hover,var(--f-hov));
+    --ok:var(--dsw-alias-state-success-primary,var(--f-ok));
+    --warn:var(--dsw-alias-state-warn-label,var(--f-warn));
+    --err:var(--dsw-alias-state-error-primary,var(--f-err));
+    --info:var(--dsw-alias-state-info-label,var(--f-info));
+    --bg:var(--dsw-alias-bg-module-platform,var(--f-bg));
+    --btn:var(--dsw-alias-button-primary-fill,var(--f-btn));
+    --btnfg:var(--dsw-alias-label-primary-foreground,var(--f-btnfg));
+    --code:var(--ds-font-family-code,ui-monospace,Consolas,monospace);
+  }
+  @media (prefers-color-scheme: light){
+    .mock{ --f-lp:#1c1c1c; --f-ls:#4a4a4a; --f-lt:#767676; --f-lc:#999;
+      --f-b2:#ddd; --f-b3:#ccc; --f-hov:rgba(0,0,0,.05);
+      --f-bg:#fff; }
+  }
+
+  .sketch-note{color:#8b8b8b;font-size:12px;line-height:18px;margin:0 0 12px;
+    display:flex;gap:8px;align-items:center}
+  .sketch-note::before{content:"✎";flex:none}
+
+  .mcp-section{max-width:720px;color:var(--lp);flex-direction:column;gap:12px;display:flex}
+  .mcp-head{justify-content:space-between;align-items:flex-start;gap:12px;display:flex}
+  .mcp-title{color:var(--lp);margin:0;font-size:16px;font-weight:500;line-height:24px}
+  .mcp-sub{color:var(--lt);margin:2px 0 0;font-size:12px;line-height:18px;max-width:460px}
+
+  .mcp-switch{box-sizing:border-box;width:36px;height:20px;border:1px solid var(--b3);
+    background:var(--bg);cursor:pointer;border-radius:10px;flex:none;padding:0;position:relative;
+    transition:background .12s,border-color .12s}
+  .mcp-switch[data-on="true"]{border-color:transparent;background:var(--btn)}
+  .mcp-switch .thumb{background:var(--lt);width:16px;height:16px;border-radius:8px;
+    position:absolute;top:1px;left:1px;transition:left .12s,background .12s}
+  .mcp-switch[data-on="true"] .thumb{background:var(--btnfg);left:17px}
+
+  .mcp-addbtn{border:1px solid var(--b2);background:0 0;color:var(--lp);font:inherit;
+    font-size:12px;line-height:18px;border-radius:14px;padding:4px 12px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:5px}
+  .mcp-addbtn:hover{background:var(--hov)}
+  .mcp-addbtn .plus{color:var(--ok);font-weight:600}
+
+  .mcp-list{flex-direction:column;gap:6px;display:flex}
+  .mcp-row{border:1px solid var(--b2);border-radius:10px;display:flex;flex-direction:column}
+  .mcp-row:hover{background:var(--hov)}
+  .mcp-row-main{align-items:center;gap:10px;padding:8px 10px 8px 12px;display:flex}
+  .mcp-dot{width:8px;height:8px;border-radius:4px;flex:none;background:var(--ok)}
+  .mcp-row[data-off="true"] .mcp-dot{background:var(--b3)}
+  .mcp-row-id{flex-direction:column;gap:2px;min-width:0;flex:1;display:flex}
+  .mcp-row-name{color:var(--lp);align-items:center;gap:6px;font-size:14px;font-weight:500;
+    line-height:22px;display:flex}
+  .mcp-row-name code{font-family:var(--code);font-size:13px}
+  .mcp-row-desc{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--lt);
+    font-size:12px;line-height:18px;overflow:hidden}
+  .mcp-badge{border:1px solid var(--b3);color:var(--lt);border-radius:4px;flex:none;
+    padding:0 5px;font-size:11px;font-weight:400;line-height:16px;cursor:default}
+  .mcp-badge[data-e="deferred"]{color:#c084fc;border-color:color-mix(in srgb,#c084fc 40%,transparent)}
+  .mcp-badge[data-e="direct"]{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
+  .mcp-badge[data-e="stdio"],.mcp-badge[data-e="http"]{color:var(--info);
+    border-color:color-mix(in srgb,var(--info) 40%,transparent)}
+  .mcp-badge[data-e="restart"]{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent);
+    border-style:dashed}
+  .mcp-badge[data-e="hot"]{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
+  .mcp-edit{border:1px solid transparent;background:0 0;color:var(--lt);font:inherit;
+    font-size:12px;line-height:18px;border-radius:6px;padding:2px 8px;cursor:pointer;flex:none}
+  .mcp-edit:hover{border-color:var(--b3);color:var(--lp)}
+
+  .mcp-toast{border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);border-radius:10px;
+    padding:8px 10px;color:var(--lp);font-size:12px;line-height:18px;display:flex;gap:8px;
+    align-items:flex-start}
+  .mcp-toast[hidden]{display:none}
+  .mcp-toast.warn{border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+  .mcp-toast .tag{flex:none;color:var(--ok);font-weight:500}
+  .mcp-toast.warn .tag{color:var(--warn)}
+
+  /* ── 添加/编辑 模态面板 ── */
+  .mcp-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
+    align-items:flex-start;justify-content:center;padding:48px 16px;z-index:10;overflow:auto}
+  .mcp-overlay[hidden]{display:none}
+  .mcp-modal{background:var(--bg);border:1px solid var(--b2);border-radius:12px;
+    width:640px;max-width:100%;box-shadow:0 16px 48px rgba(0,0,0,.35);
+    display:flex;flex-direction:column;gap:14px;padding:16px 18px 14px}
+  .mcp-modal-head{align-items:center;justify-content:space-between;display:flex}
+  .mcp-modal-title{color:var(--lp);font-size:15px;font-weight:500;margin:0}
+  .mcp-modal-close{border:0;background:0 0;color:var(--lt);font-size:16px;cursor:pointer;
+    padding:2px 6px;border-radius:6px}
+  .mcp-modal-close:hover{background:var(--hov);color:var(--lp)}
+
+  .mcp-fld{display:flex;flex-direction:column;gap:5px}
+  .mcp-fld-label{color:var(--ls);font-size:12px;line-height:18px}
+  .mcp-fld-label code{font-family:var(--code);font-size:11px;color:var(--lt)}
+  .mcp-fld-input{border:1px solid var(--b2);background:0 0;color:var(--lp);font:inherit;
+    font-size:13px;line-height:20px;border-radius:8px;padding:5px 10px;width:100%}
+  .mcp-fld-input:focus{outline:none;border-color:var(--btn)}
+  .mcp-fld-input.mono{font-family:var(--code);font-size:12px}
+  .mcp-fld-input[aria-invalid="true"]{border-color:var(--err)}
+  .mcp-fld-hint{color:var(--lc);font-size:11px;line-height:16px}
+  .mcp-fld-hint[data-err="true"]{color:var(--err)}
+  textarea.mcp-fld-input{resize:vertical;min-height:54px}
+
+  .mcp-chips{display:flex;gap:6px;flex-wrap:wrap}
+  .mcp-chip{border:1px solid var(--b2);background:0 0;color:var(--ls);font:inherit;
+    font-size:12px;line-height:18px;border-radius:14px;padding:3px 11px;cursor:pointer}
+  .mcp-chip:hover{background:var(--hov);color:var(--lp)}
+  .mcp-chip[data-active="true"]{border-color:var(--btn);color:var(--lp)}
+
+  .mcp-seg{display:inline-flex;border:1px solid var(--b2);border-radius:8px;overflow:hidden;width:fit-content}
+  .mcp-seg button{border:0;background:0 0;color:var(--lt);font:inherit;font-size:12px;
+    line-height:18px;padding:4px 14px;cursor:pointer}
+  .mcp-seg button + button{border-left:1px solid var(--b2)}
+  .mcp-seg button[data-active="true"]{background:var(--hov);color:var(--lp);font-weight:500}
+
+  .mcp-kv{display:flex;flex-direction:column;gap:5px}
+  .mcp-kv-row{display:flex;gap:6px;align-items:center}
+  .mcp-kv-row .k{flex:0 0 34%;font-family:var(--code);font-size:12px}
+  .mcp-kv-row .v{flex:1;font-family:var(--code);font-size:12px}
+  .mcp-kv-row .v[data-envref="true"]{color:var(--ok)}
+  .mcp-kv-del{border:0;background:0 0;color:var(--lt);cursor:pointer;font-size:13px;
+    padding:2px 6px;border-radius:6px;flex:none}
+  .mcp-kv-del:hover{background:var(--hov);color:var(--err)}
+  .mcp-kv-add{border:1px dashed var(--b3);background:0 0;color:var(--lt);font:inherit;
+    font-size:12px;line-height:18px;border-radius:8px;padding:4px 10px;cursor:pointer;
+    width:fit-content}
+  .mcp-kv-add:hover{color:var(--lp);background:var(--hov)}
+  .mcp-envref-note{color:var(--lc);font-size:11px;line-height:16px}
+  .mcp-envref-note b{color:var(--ok);font-weight:500}
+
+  .mcp-modal-foot{border-top:1px solid var(--b2);padding-top:12px;display:flex;
+    align-items:center;gap:10px}
+  .mcp-modal-foot .note{color:var(--lt);font-size:12px;line-height:18px;flex:1}
+  .mcp-modal-foot .note b{color:var(--warn);font-weight:500}
+  .mcp-modal-foot .note b.hot{color:var(--ok)}
+  .mcp-btn{border:1px solid transparent;border-radius:8px;font:inherit;font-size:13px;
+    line-height:20px;padding:5px 16px;cursor:pointer}
+  .mcp-btn.primary{background:var(--btn);color:var(--btnfg)}
+  .mcp-btn.primary[disabled]{opacity:.45;cursor:not-allowed}
+  .mcp-btn.ghost{border-color:var(--b2);background:0 0;color:var(--ls)}
+  .mcp-btn.ghost:hover{background:var(--hov)}
+
+  .mcp-secret-warn{color:var(--warn);font-size:11px;line-height:16px;display:none}
+  .mcp-secret-warn[data-show="true"]{display:block}
+</style>
+</head>
+<body>
+<div class="stage mock">
+  <p class="sketch-note">dsh-mcp-gate · 添加 MCP 服务器功能草图 —— 配置页新增「+ 添加服务器」与行内「编辑」；新增走 profile patch（重启生效），编辑走 configEditor（热生效）。可交互。</p>
+
+  <section class="mcp-section">
+    <div class="mcp-head">
+      <div>
+        <h2 class="mcp-title">MCP 服务器</h2>
+        <p class="mcp-sub">工具默认折叠，模型经 mcp_search 按需解锁；此处管理接入与三层开关。</p>
+      </div>
+      <button class="mcp-addbtn" id="btnAdd"><span class="plus">＋</span>添加服务器</button>
+    </div>
+
+    <div class="mcp-toast" id="toast" hidden>
+      <span class="tag" id="toastTag">✓</span>
+      <span id="toastText"></span>
+    </div>
+
+    <div class="mcp-list" id="list">
+      <div class="mcp-row" data-name="playwright">
+        <div class="mcp-row-main">
+          <span class="mcp-dot"></span>
+          <span class="mcp-row-id">
+            <span class="mcp-row-name"><code>playwright</code>
+              <span class="mcp-badge" data-e="stdio">stdio</span>
+              <span class="mcp-badge" data-e="deferred">deferred</span>
+            </span>
+            <span class="mcp-row-desc">npx @playwright/mcp@latest · 浏览器自动化，12 工具</span>
+          </span>
+          <button class="mcp-edit" data-edit="playwright">编辑</button>
+        </div>
+      </div>
+      <div class="mcp-row" data-name="github">
+        <div class="mcp-row-main">
+          <span class="mcp-dot"></span>
+          <span class="mcp-row-id">
+            <span class="mcp-row-name"><code>github</code>
+              <span class="mcp-badge" data-e="http">http</span>
+              <span class="mcp-badge" data-e="direct">direct</span>
+            </span>
+            <span class="mcp-row-desc">https://api.githubcopilot.com/mcp/ · GITHUB_TOKEN 以 ${ENV} 引用，8 工具</span>
+          </span>
+          <button class="mcp-edit" data-edit="github">编辑</button>
+        </div>
+      </div>
+      <div class="mcp-row" data-name="fs-notes" data-off="true">
+        <div class="mcp-row-main">
+          <span class="mcp-dot"></span>
+          <span class="mcp-row-id">
+            <span class="mcp-row-name"><code>fs-notes</code>
+              <span class="mcp-badge" data-e="stdio">stdio</span>
+              <span class="mcp-badge" data-e="restart">待重启</span>
+            </span>
+            <span class="mcp-row-desc">npx -y @modelcontextprotocol/server-filesystem D:\notes · 刚添加，重启后接入</span>
+          </span>
+          <button class="mcp-edit" data-edit="fs-notes">编辑</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ══ 添加 / 编辑 模态 ══ -->
+<div class="mcp-overlay mock" id="overlay" hidden>
+  <div class="mcp-modal" role="dialog" aria-label="添加 MCP 服务器">
+    <div class="mcp-modal-head">
+      <h3 class="mcp-modal-title" id="modalTitle">添加 MCP 服务器</h3>
+      <button class="mcp-modal-close" id="btnClose" title="关闭">✕</button>
+    </div>
+
+    <div class="mcp-fld">
+      <span class="mcp-fld-label">模板</span>
+      <div class="mcp-chips" id="chips">
+        <button class="mcp-chip" data-tpl="blank" data-active="true">空白</button>
+        <button class="mcp-chip" data-tpl="filesystem">Filesystem</button>
+        <button class="mcp-chip" data-tpl="fetch">Fetch</button>
+        <button class="mcp-chip" data-tpl="memory">Memory</button>
+        <button class="mcp-chip" data-tpl="playwright">Playwright</button>
+        <button class="mcp-chip" data-tpl="github">GitHub (HTTP)</button>
+      </div>
+    </div>
+
+    <div class="mcp-fld">
+      <span class="mcp-fld-label">名称 <code>[A-Za-z0-9_-]{1,32}</code>，接入后工具名为 <code>mcp__&lt;名称&gt;__&lt;工具&gt;</code></span>
+      <input class="mcp-fld-input mono" id="fName" spellcheck="false" placeholder="my-server">
+      <span class="mcp-fld-hint" id="nameHint" data-err="false">全局唯一；用于三层开关与项目覆盖的键。</span>
+    </div>
+
+    <div class="mcp-fld">
+      <span class="mcp-fld-label">传输</span>
+      <div class="mcp-seg" id="seg">
+        <button data-t="stdio" data-active="true">stdio（本地进程）</button>
+        <button data-t="http">HTTP（远程）</button>
+      </div>
+    </div>
+
+    <div id="paneStdio" style="display:flex;flex-direction:column;gap:12px">
+      <div class="mcp-fld">
+        <span class="mcp-fld-label">启动命令</span>
+        <input class="mcp-fld-input mono" id="fCmd" spellcheck="false" placeholder="npx -y @modelcontextprotocol/server-filesystem D:\dir">
+        <span class="mcp-fld-hint">第一个词为可执行文件，其余为参数；也可把参数拆到下方每行一个。</span>
+      </div>
+      <div class="mcp-fld">
+        <span class="mcp-fld-label">参数（每行一个，可留空）</span>
+        <textarea class="mcp-fld-input mono" id="fArgs" spellcheck="false" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;D:\notes"></textarea>
+      </div>
+      <div class="mcp-kv">
+        <span class="mcp-fld-label">环境变量</span>
+        <div id="kvEnv"></div>
+        <button class="mcp-kv-add" id="btnEnvAdd">＋ 添加变量</button>
+        <span class="mcp-envref-note">值支持 <b>${VAR}</b> 环境变量引用——落盘只存引用，不明文保存密钥。</span>
+      </div>
+    </div>
+
+    <div id="paneHttp" style="display:none;flex-direction:column;gap:12px">
+      <div class="mcp-fld">
+        <span class="mcp-fld-label">URL</span>
+        <input class="mcp-fld-input mono" id="fUrl" spellcheck="false" placeholder="https://api.githubcopilot.com/mcp/">
+      </div>
+      <div class="mcp-kv">
+        <span class="mcp-fld-label">请求头</span>
+        <div id="kvHdr"></div>
+        <button class="mcp-kv-add" id="btnHdrAdd">＋ 添加请求头</button>
+        <span class="mcp-envref-note">Authorization: <b>Bearer ${GITHUB_TOKEN}</b> —— 引用语法同左（若 mcp-client 不解析 header 引用则 v1 明文保存，会标注）。</span>
+      </div>
+    </div>
+
+    <span class="mcp-secret-warn" id="secretWarn">⚠ 检测到疑似明文密钥（长随机串）。建议改为 ${ENV_VAR} 引用，避免密钥明文落盘。</span>
+
+    <div class="mcp-modal-foot">
+      <span class="note" id="footNote">保存后写入 profile 配置，<b>需重启 DSH 生效</b>；接入后默认 deferred 折叠、可被 mcp_search 检索。</span>
+      <button class="mcp-btn ghost" id="btnCancel">取消</button>
+      <button class="mcp-btn primary" id="btnSave" disabled>保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ═══ 草图数据（正式实现来自 GET /plugins/mcp-gate/state + HTTP 路由）═══ */
+var SERVERS = {
+  playwright: { name:"playwright", transport:"stdio",
+    cmd:"npx @playwright/mcp@latest", args:"", env:[],
+    note:"浏览器自动化，12 工具" },
+  github: { name:"github", transport:"http",
+    url:"https://api.githubcopilot.com/mcp/",
+    headers:[["Authorization","Bearer ${GITHUB_TOKEN}"]],
+    note:"GITHUB_TOKEN 以 ${ENV} 引用，8 工具" },
+  "fs-notes": { name:"fs-notes", transport:"stdio",
+    cmd:"npx -y @modelcontextprotocol/server-filesystem", args:"D:\\notes", env:[],
+    note:"刚添加，重启后接入", pending:true }
+};
+var TEMPLATES = {
+  filesystem: { name:"fs-notes", transport:"stdio",
+    cmd:"npx -y @modelcontextprotocol/server-filesystem", args:"D:\\notes", env:[] },
+  fetch: { name:"fetch", transport:"stdio",
+    cmd:"uvx mcp-server-fetch", args:"", env:[] },
+  memory: { name:"memory", transport:"stdio",
+    cmd:"npx -y @modelcontextprotocol/server-memory", args:"", env:[] },
+  playwright: { name:"playwright", transport:"stdio",
+    cmd:"npx @playwright/mcp@latest", args:"", env:[] },
+  github: { name:"github", transport:"http",
+    url:"https://api.githubcopilot.com/mcp/",
+    headers:[["Authorization","Bearer ${GITHUB_TOKEN}"]] }
+};
+var state = { mode:"add", editName:null, transport:"stdio" };
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]; }); }
+
+/* ── 名称校验：[A-Za-z0-9_-]{1,32} + 重名 ── */
+function nameError(v){
+  if (v.length === 0) return "必填";
+  if (!/^[A-Za-z0-9_-]{1,32}$/.test(v)) return "仅允许字母、数字、下划线、连字符，长度 1-32";
+  if (v !== state.editName && Object.hasOwn(SERVERS, v)) return "名称已存在";
+  return null;
+}
+
+/* ── 高熵明文启发式：长度≥24 无空格且混大小写数字 ── */
+function looksSecret(v){ return v.length >= 24 && !/\s/.test(v) && /[a-z]/.test(v) && /[A-Z]/.test(v) && /[0-9]/.test(v); }
+
+function kvRow(container, k, v){
+  var row = document.createElement("div");
+  row.className = "mcp-kv-row";
+  row.innerHTML = '<input class="mcp-fld-input k" placeholder="NAME" value="' + esc(k) + '">' +
+                  '<input class="mcp-fld-input v" placeholder="value 或 ${VAR}" value="' + esc(v) + '">' +
+                  '<button class="mcp-kv-del" title="移除">✕</button>';
+  row.querySelector(".v").addEventListener("input", onValueChange);
+  row.querySelector(".mcp-kv-del").addEventListener("click", function(){ row.remove(); onValueChange(); });
+  container.appendChild(row);
+  markEnvRef(row);
+}
+function markEnvRef(row){
+  var v = row.querySelector(".v");
+  v.dataset.envref = /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/.test(v.value.trim()) ? "true" : "false";
+}
+function onValueChange(){
+  var rows = Array.prototype.slice.call(document.querySelectorAll(".mcp-overlay .mcp-kv-row"));
+  rows.forEach(markEnvRef);
+  var plain = rows.some(function(r){ return looksSecret(r.querySelector(".v").value.trim()); });
+  $("secretWarn").dataset.show = plain ? "true" : "false";
+}
+
+/* ── 打开/关闭 ── */
+function openModal(mode, editName){
+  state.mode = mode; state.editName = editName || null;
+  $("modalTitle").textContent = mode === "edit" ? "编辑 " + editName : "添加 MCP 服务器";
+  $("btnSave").textContent = mode === "edit" ? "保存修改" : "保存并接入";
+  $("footNote").innerHTML = mode === "edit"
+    ? '修改现有服务器走 configEditor，<b class="hot">保存后立即热生效，无需重启</b>。'
+    : '保存后写入 profile 配置，<b>需重启 DSH 生效</b>；接入后默认 deferred 折叠、可被 mcp_search 检索。';
+  var tpl = (mode === "edit" && SERVERS[editName]) || TEMPLATES.blank || {};
+  if (mode === "edit") tpl = SERVERS[editName];
+  $("chips").querySelectorAll(".mcp-chip").forEach(function(c){ c.dataset.active = c.dataset.tpl === "blank" ? "true" : "false"; });
+  fillForm(tpl);
+  $("overlay").hidden = false;
+}
+function fillForm(tpl){
+  $("fName").value = (tpl && tpl.name) || "";
+  $("fName").disabled = state.mode === "edit";
+  var t = (tpl && tpl.transport) || "stdio";
+  setTransport(t);
+  $("fCmd").value = (tpl && tpl.cmd) || "";
+  $("fArgs").value = (tpl && tpl.args) || "";
+  $("fUrl").value = (tpl && tpl.url) || "";
+  $("kvEnv").innerHTML = ""; $("kvHdr").innerHTML = "";
+  ((tpl && tpl.env) || []).forEach(function(p){ kvRow($("kvEnv"), p[0], p[1]); });
+  ((tpl && tpl.headers) || []).forEach(function(p){ kvRow($("kvHdr"), p[0], p[1]); });
+  validate();
+}
+function closeModal(){ $("overlay").hidden = true; }
+
+/* ── transport 切换 ── */
+function setTransport(t){
+  state.transport = t;
+  $("seg").querySelectorAll("button").forEach(function(b){ b.dataset.active = b.dataset.t === t ? "true" : "false"; });
+  $("paneStdio").style.display = t === "stdio" ? "flex" : "none";
+  $("paneHttp").style.display = t === "http" ? "flex" : "none";
+  validate();
+}
+
+/* ── 校验与保存按钮态 ── */
+function validate(){
+  var err = nameError($("fName").value.trim());
+  var hint = $("nameHint");
+  hint.textContent = err || "全局唯一；用于三层开关与项目覆盖的键。";
+  hint.dataset.err = err ? "true" : "false";
+  $("fName").setAttribute("aria-invalid", err ? "true" : "false");
+  var filled = err ? false : (state.transport === "stdio"
+    ? $("fCmd").value.trim().length > 0
+    : /^https?:\/\//.test($("fUrl").value.trim()));
+  $("btnSave").disabled = !filled;
+  return !err && filled;
+}
+
+/* ── 行渲染（保存后模拟刷新）── */
+function renderRow(s){
+  var row = document.createElement("div");
+  row.className = "mcp-row";
+  row.dataset.name = s.name;
+  var desc = s.transport === "stdio"
+    ? esc([s.cmd].concat((s.args||"").split(/\n/).filter(Boolean)).join(" ")) + (s.note ? " · " + esc(s.note) : "")
+    : esc(s.url) + (s.note ? " · " + esc(s.note) : "");
+  row.innerHTML = '<div class="mcp-row-main"><span class="mcp-dot"></span>' +
+    '<span class="mcp-row-id"><span class="mcp-row-name"><code>' + esc(s.name) + '</code>' +
+    '<span class="mcp-badge" data-e="' + s.transport + '">' + (s.transport === "stdio" ? "stdio" : "http") + '</span>' +
+    (s.pending ? '<span class="mcp-badge" data-e="restart">待重启</span>' : "") +
+    '</span><span class="mcp-row-desc">' + desc + '</span></span>' +
+    '<button class="mcp-edit" data-edit="' + esc(s.name) + '">编辑</button></div>';
+  row.querySelector(".mcp-edit").addEventListener("click", function(){ openModal("edit", s.name); });
+  return row;
+}
+function refreshList(){
+  var list = $("list"); list.innerHTML = "";
+  Object.keys(SERVERS).forEach(function(k){ list.appendChild(renderRow(SERVERS[k])); });
+}
+
+function toast(tag, text, warn){
+  $("toastTag").textContent = tag;
+  $("toastText").textContent = text;
+  $("toast").className = warn ? "mcp-toast warn" : "mcp-toast";
+  $("toast").hidden = false;
+}
+
+/* ── 保存（草图模拟；正式实现 POST /add 或 /update）── */
+function save(){
+  if (!validate()) return;
+  var s = { name: $("fName").value.trim(), transport: state.transport, note:"" };
+  if (state.transport === "stdio") {
+    s.cmd = $("fCmd").value.trim();
+    s.args = $("fArgs").value;
+    s.env = kvPairs($("kvEnv"));
+  } else {
+    s.url = $("fUrl").value.trim();
+    s.headers = kvPairs($("kvHdr"));
+  }
+  if (state.mode === "edit") {
+    var old = SERVERS[state.editName];
+    ["pending"].forEach(function(k){ if (old[k]) s[k] = old[k]; });
+    if (state.editName !== s.name) delete SERVERS[state.editName];
+    SERVERS[s.name] = s;
+    delete s.pending;
+    toast("✓", s.name + " 配置已通过 configEditor 热生效，无需重启。");
+  } else {
+    s.pending = true;
+    s.note = "刚添加，重启后接入";
+    SERVERS[s.name] = s;
+    toast("✓", s.name + " 已写入 profile 配置（insert 行）。重启 DSH 后接入，默认 deferred 折叠。");
+  }
+  refreshList(); closeModal();
+}
+function kvPairs(container){
+  var out = [];
+  container.querySelectorAll(".mcp-kv-row").forEach(function(r){
+    var k = r.querySelector(".k").value.trim(), v = r.querySelector(".v").value.trim();
+    if (k) out.push([k, v]);
+  });
+  return out;
+}
+
+/* ── 事件绑定 ── */
+$("btnAdd").addEventListener("click", function(){ openModal("add"); });
+$("btnClose").addEventListener("click", closeModal);
+$("btnCancel").addEventListener("click", closeModal);
+$("overlay").addEventListener("click", function(e){ if (e.target === this) closeModal(); });
+$("seg").addEventListener("click", function(e){
+  var t = e.target.closest("button"); if (t) setTransport(t.dataset.t);
+});
+$("chips").addEventListener("click", function(e){
+  var c = e.target.closest(".mcp-chip"); if (!c) return;
+  this.querySelectorAll(".mcp-chip").forEach(function(x){ x.dataset.active = x === c ? "true" : "false"; });
+  fillForm(TEMPLATES[c.dataset.tpl] || {});
+});
+$("btnEnvAdd").addEventListener("click", function(){ kvRow($("kvEnv"), "", ""); });
+$("btnHdrAdd").addEventListener("click", function(){ kvRow($("kvHdr"), "", ""); });
+$("fName").addEventListener("input", validate);
+$("fCmd").addEventListener("input", validate);
+$("fUrl").addEventListener("input", validate);
+$("btnSave").addEventListener("click", save);
+
+document.querySelectorAll(".mcp-edit").forEach(function(b){
+  b.addEventListener("click", function(){ openModal("edit", b.dataset.edit); });
+});
+
+refreshList();
+</script>
+</body>
+</html>

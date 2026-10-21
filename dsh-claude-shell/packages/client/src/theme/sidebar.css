@@ -74,7 +74,7 @@ body[data-dsh-claude-shell] [class*="_frame"]:not([data-sidebar-collapsed]) > [c
   height: 28px;
   line-height: 28px;
   padding: 0 8px;
-  margin: 0 0 6px 0;
+  margin: 0 0 2px 0;
   border: none !important;
   border-radius: 6px;
   background: transparent;
@@ -141,10 +141,10 @@ body[data-dsh-claude-shell][data-ds-dark-theme] button[class*="newSession"]::bef
 
 /* ---------- the sidebar's panel rows (插件 + plugin entries) ---------- */
 /* The panel entries live in a `nav.panelList` whose own gap stacks on the row
-   margin, so the rows' 6px margin is the only spacing; each row takes the
-   new-session metrics — including the 20px icon box, so both labels start at the
-   same x. The list's own bottom margin would add to the last row's, leaving
-   twice the air under the entries, so it is dropped. */
+   margin, so the gap stays zero and the rows' 2px margin is the only spacing;
+   each row takes the new-session metrics — including the 20px icon box, so both
+   labels start at the same x. The list's own bottom margin would add to the last
+   row's, leaving twice the air under the entries, so it is dropped. */
 body[data-dsh-claude-shell] nav[class*="panelList"] {
   gap: 0;
   margin-bottom: 0;
@@ -162,7 +162,7 @@ body[data-dsh-claude-shell] button[class*="panelRow"] {
   min-height: 28px;
   line-height: 28px;
   padding: 0 8px;
-  margin: 0 0 6px 0;
+  margin: 0 0 2px 0;
   border: none !important;
   border-radius: 6px;
   background: transparent;

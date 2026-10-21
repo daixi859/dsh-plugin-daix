@@ -1,0 +1,7 @@
+# dsh-mcp-gate bundle patch: 把 mcp-gate 插件行插入 host 组合。
+# 由 `dsh plugin --profile <name> add dsh-mcp-gate` 的 reconcile 识别
+# （package.json 声明 dsh.bundle），并加入 profile 的 dsh.profile.bundles 层。
+
+- insert:
+    - id: mcp-gate
+      name: dsh-mcp-gate

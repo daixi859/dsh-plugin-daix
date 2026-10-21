@@ -1,0 +1,24 @@
+# dsh-mcp-gate 端到端验证 overlay：
+#   dsh headless --patch <本文件> "<任务>"
+# 只注入 zai LLM 路由与默认模型（headless profile 无自带凭据行；key 走全局凭据服务 refs）。
+# demo MCP 服务器不再走 patch（旧版 mcp-client 接入），改由 mcp-gate config.json 的
+# 内置连接器驱动（E2E 脚本负责备份/写入/恢复 ~/.dsh/plugins/mcp-gate/config.json）。
+- insert:
+    - id: llm-pi-ai
+      name: '@deepseek-ai/dsh-llm-pi-ai'
+      config:
+        providers:
+          zai:
+            models:
+              - id: glm-5.3-flash
+                name: GLM-5.3-Flash
+                contextWindow: 1000000
+                maxTokens: 131072
+                input: [text]
+            apiKeyEnv: ZAI_API_KEY
+            baseURL: https://open.bigmodel.cn/api/coding/paas/v4
+    - id: agent-default-model
+      name: '@deepseek-ai/dsh-agent-default-model'
+      config:
+        provider: zai
+        model: glm-5.3-flash

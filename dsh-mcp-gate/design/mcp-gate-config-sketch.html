@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MCP 工具管理 · 配置草图（dsh-mcp-gate）</title>
+<style>
+  /* ── 页面舞台（仅草图用，正式实现是 DSH 设置页 section，无此层）──────── */
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 16px 64px;font:14px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       background:#0d0d0d}
+  @media (prefers-color-scheme: light){ body{background:#f2f2f2} }
+  .stage{max-width:760px;margin:0 auto}
+
+  /* ── token 映射：在 DSH 内自动命中真实 --dsw-alias-*，否则用近似 fallback ── */
+  .mock{
+    --f-lp:#e9e9e9; --f-ls:#b9b9b9; --f-lt:#8b8b8b; --f-lc:#6d6d6d;
+    --f-b2:#333; --f-b3:#454545; --f-hov:rgba(255,255,255,.06);
+    --f-ok:#4ade80; --f-warn:#fbbf24; --f-err:#f87171; --f-info:#7aa2f7;
+    --f-bg:#161616; --f-btn:#3574f0; --f-btnfg:#fff;
+    --lp:var(--dsw-alias-label-primary,var(--f-lp));
+    --ls:var(--dsw-alias-label-secondary,var(--f-ls));
+    --lt:var(--dsw-alias-label-tertiary,var(--f-lt));
+    --lc:var(--dsw-alias-label-caption,var(--f-lc));
+    --b2:var(--dsw-alias-border-l2,var(--f-b2));
+    --b3:var(--dsw-alias-border-l3,var(--f-b3));
+    --hov:var(--dsw-alias-interactive-bg-hover,var(--f-hov));
+    --ok:var(--dsw-alias-state-success-primary,var(--f-ok));
+    --warn:var(--dsw-alias-state-warn-label,var(--f-warn));
+    --err:var(--dsw-alias-state-error-primary,var(--f-err));
+    --bg:var(--dsw-alias-bg-module-platform,var(--f-bg));
+    --btn:var(--dsw-alias-button-primary-fill,var(--f-btn));
+    --btnfg:var(--dsw-alias-label-primary-foreground,var(--f-btnfg));
+    --code:var(--ds-font-family-code,ui-monospace,Consolas,monospace);
+  }
+  @media (prefers-color-scheme: light){
+    .mock{ --f-lp:#1c1c1c; --f-ls:#4a4a4a; --f-lt:#767676; --f-lc:#999;
+      --f-b2:#ddd; --f-b3:#ccc; --f-hov:rgba(0,0,0,.05);
+      --f-bg:#fff; }
+  }
+
+  /* ── 草图标注 ── */
+  .sketch-note{color:#8b8b8b;font-size:12px;line-height:18px;margin:0 0 12px;
+    display:flex;gap:8px;align-items:center}
+  .sketch-note::before{content:"✎";flex:none}
+
+  /* ── section 容器（对齐 skill-manager 惯例）────────────────────────── */
+  .mcp-section{max-width:720px;color:var(--lp);flex-direction:column;gap:12px;display:flex}
+  .mcp-head{justify-content:space-between;align-items:flex-start;gap:12px;display:flex}
+  .mcp-title{color:var(--lp);margin:0;font-size:16px;font-weight:500;line-height:24px}
+  .mcp-sub{color:var(--lt);margin:2px 0 0;font-size:12px;line-height:18px;max-width:460px}
+
+  /* ── 总开关 ── */
+  .mcp-master{flex:none;align-items:center;gap:8px;display:flex;padding-top:2px}
+  .mcp-master-label{color:var(--ls);font-size:12px;line-height:18px}
+  .mcp-master-state{font-size:12px;line-height:18px}
+  .mcp-master-state[data-on="true"]{color:var(--ok)}
+  .mcp-master-state[data-on="false"]{color:var(--err)}
+  .mcp-switch{box-sizing:border-box;width:36px;height:20px;border:1px solid var(--b3);
+    background:var(--bg);cursor:pointer;border-radius:10px;flex:none;padding:0;position:relative;
+    transition:background .12s,border-color .12s}
+  .mcp-switch:hover{background:var(--hov)}
+  .mcp-switch[data-on="true"]{border-color:transparent;background:var(--btn)}
+  .mcp-switch .thumb{background:var(--lt);width:16px;height:16px;border-radius:8px;
+    position:absolute;top:1px;left:1px;transition:left .12s,background .12s}
+  .mcp-switch[data-on="true"] .thumb{background:var(--btnfg);left:17px}
+  .mcp-switch:disabled{opacity:.4;cursor:not-allowed}
+
+  /* ── 项目上下文条 ── */
+  .mcp-context{border:1px solid var(--b2);border-radius:10px;padding:8px 10px;
+    align-items:center;gap:10px;display:flex;flex-wrap:wrap}
+  .mcp-context-label{color:var(--ls);flex:none;font-size:12px;line-height:18px}
+  .mcp-context-select{border:1px solid var(--b2);height:28px;color:var(--lp);font:inherit;
+    font-size:12px;line-height:18px;background:0 0;border-radius:14px;padding:0 10px;
+    min-width:0;flex:1;cursor:pointer;max-width:360px}
+  .mcp-context-select:hover{background:var(--hov)}
+  .mcp-context-select:focus{outline:none;border-color:var(--b3)}
+  .mcp-context-meta{color:var(--lc);font-size:11px;line-height:16px;flex:none}
+  .mcp-context-meta b{color:var(--warn);font-weight:500}
+
+  /* ── 停用横幅 ── */
+  .mcp-banner{border:1px solid color-mix(in srgb,var(--err) 35%,transparent);
+    border-radius:10px;padding:8px 10px;color:var(--err);font-size:12px;line-height:18px}
+  .mcp-banner[hidden]{display:none}
+
+  /* ── 过滤 tab ── */
+  .mcp-tabs{gap:4px;display:flex;flex-wrap:wrap}
+  .mcp-tab{border:1px solid transparent;background:0 0;color:var(--lt);font:inherit;
+    font-size:12px;line-height:18px;border-radius:14px;padding:3px 10px;cursor:pointer}
+  .mcp-tab:hover{background:var(--hov)}
+  .mcp-tab[data-active="true"]{border-color:var(--b3);color:var(--lp)}
+  .mcp-tab .n{color:var(--lc);font-size:11px;margin-left:3px}
+  .mcp-tab:disabled{opacity:.4;cursor:not-allowed}
+
+  /* ── 服务器行卡片 ── */
+  .mcp-list{flex-direction:column;gap:6px;display:flex}
+  .mcp-row{border:1px solid var(--b2);border-radius:10px;display:flex;flex-direction:column;
+    transition:opacity .12s}
+  .mcp-row:hover{background:var(--hov)}
+  .mcp-row[data-off="true"]{opacity:.55}
+  .mcp-row-main{position:relative;align-items:center;gap:10px;padding:8px 10px 8px 12px;display:flex;cursor:pointer}
+  .mcp-dot{width:8px;height:8px;border-radius:4px;flex:none;background:var(--ok)}
+  .mcp-row[data-off="true"] .mcp-dot{background:var(--b3)}
+  .mcp-row-id{flex-direction:column;gap:2px;min-width:0;flex:1;display:flex}
+  .mcp-row-name{color:var(--lp);align-items:center;gap:6px;font-size:14px;font-weight:500;
+    line-height:22px;display:flex}
+  .mcp-row-name code{font-family:var(--code);font-size:13px}
+  .mcp-row-desc{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--lt);
+    font-size:12px;line-height:18px;overflow:hidden}
+  .mcp-state-label{flex:none;font-size:11px;line-height:16px;color:var(--lt);
+    display:inline-flex;align-items:center;gap:4px}
+  .mcp-state-label[data-kind="off-project"]{color:var(--warn)}
+  .mcp-state-label[data-kind="on-project"]{color:var(--ok)}
+  .mcp-state-label[data-kind="disabled"]{color:var(--err)}
+  .mcp-badge{border:1px solid var(--b3);color:var(--lt);border-radius:4px;flex:none;
+    padding:0 5px;font-size:11px;font-weight:400;line-height:16px;cursor:default}
+  .mcp-badge[data-e="codemode"]{color:var(--info);border-color:color-mix(in srgb,var(--info) 40%,transparent)}
+  .mcp-badge[data-e="deferred"]{color:#c084fc;border-color:color-mix(in srgb,#c084fc 40%,transparent)}
+  .mcp-badge[data-e="direct"]{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
+  .mcp-badge[data-e="hidden"]{color:var(--lc)}
+  .mcp-tools-count{flex:none;color:var(--lc);font-size:11px;line-height:16px}
+
+  /* ── 全局开关（行内，控制 servers[n].enabled）── */
+  .mcp-gwrap{flex:none;align-items:center;gap:5px;display:flex}
+  .mcp-glabel{color:var(--lc);font-size:11px;line-height:16px}
+
+  /* ── 三态点击组（继承 / 项目开 / 项目关）── */
+  .mcp-triseg{flex:none;display:inline-flex;border:1px solid var(--b2);
+    border-radius:14px;overflow:hidden}
+  .mcp-triseg[data-over="true"]{border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+  .mcp-triseg button{border:0;background:0 0;color:var(--lt);font:inherit;
+    font-size:11px;line-height:18px;padding:4px 9px;cursor:pointer;
+    border-left:1px solid var(--b2)}
+  .mcp-triseg button:first-child{border-left:0}
+  .mcp-triseg button:hover{background:var(--hov)}
+  .mcp-triseg button[data-active="true"]{background:var(--btn);color:var(--btnfg)}
+  .mcp-triseg button:disabled{cursor:not-allowed}
+  .mcp-triseg button:disabled:hover{background:0 0}
+  .mcp-triseg:disabled button{opacity:.4;cursor:not-allowed}
+
+  /* ── 行展开详情 ── */
+  .mcp-detail{border-top:1px solid var(--b2);padding:10px 12px;display:flex;
+    flex-direction:column;gap:10px}
+  .mcp-detail[hidden]{display:none}
+  .mcp-detail-title{color:var(--ls);font-size:12px;font-weight:500;line-height:18px;margin:0}
+  .mcp-seg{gap:4px;display:flex;flex-wrap:wrap}
+  .mcp-seg button{border:1px solid var(--b2);background:0 0;color:var(--lt);font:inherit;
+    font-size:11px;line-height:16px;border-radius:12px;padding:3px 9px;cursor:pointer}
+  .mcp-seg button:hover{background:var(--hov)}
+  .mcp-seg button[data-active="true"]{border-color:transparent;background:var(--btn);
+    color:var(--btnfg)}
+  .mcp-tooltable{flex-direction:column;gap:0;display:flex;border:1px solid var(--b2);
+    border-radius:8px;overflow:hidden}
+  .mcp-toolrow{align-items:center;gap:8px;padding:5px 10px;display:flex;
+    border-top:1px solid var(--b2);font-size:12px;line-height:18px}
+  .mcp-toolrow:first-child{border-top:0}
+  .mcp-toolrow code{font-family:var(--code);font-size:12px;color:var(--lp);flex:1;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mcp-toolrow .eff{color:var(--lc);font-size:11px;flex:none}
+  .mcp-toolrow button{border:0;background:0 0;color:var(--info);font:inherit;font-size:11px;
+    line-height:16px;cursor:pointer;padding:0 2px;flex:none}
+  .mcp-toolrow button:hover{text-decoration:underline}
+  .mcp-toolrow button[data-over="true"]{color:var(--warn)}
+  .mcp-more{color:var(--lc);font-size:11px;line-height:16px}
+  .mcp-foot{color:var(--lc);font-size:11px;line-height:16px}
+</style>
+</head>
+<body>
+<div class="stage mock">
+  <p class="sketch-note">配置草图 · 以下控件可点击演示 · 正式实现为 DSH 设置页 section（dsh-mcp-gate 插件，样式对齐 skill-manager）</p>
+
+  <section class="mcp-section">
+    <!-- 头部：标题 + 总开关（需求 1）-->
+    <div class="mcp-head">
+      <div>
+        <h2 class="mcp-title">MCP 工具管理</h2>
+        <p class="mcp-sub">渐进式披露：服务器目录常驻提示词，工具默认不声明给模型，由 codemode 脚本发现或 tool_search 按需加载；仅 direct 工具全量声明。</p>
+      </div>
+      <div class="mcp-master">
+        <span class="mcp-master-state" id="masterState" data-on="true">已启用</span>
+        <button class="mcp-switch" id="master" data-on="true" title="MCP 总开关（全局）" aria-label="MCP 总开关">
+          <span class="thumb"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 项目上下文：需求 2/3 的作用域 -->
+    <div class="mcp-context">
+      <span class="mcp-context-label">项目</span>
+      <select class="mcp-context-select" id="projSel" aria-label="选择项目">
+        <option value="dsh-plugin-daix">dsh-plugin-daix（当前工作区）</option>
+        <option value="dsh-web">dsh-web</option>
+      </select>
+      <span class="mcp-context-meta" id="meta"></span>
+    </div>
+
+    <div class="mcp-banner" id="banner" hidden></div>
+
+    <div class="mcp-tabs" id="tabs"></div>
+
+    <div class="mcp-list" id="list"></div>
+
+    <p class="mcp-foot" id="foot"></p>
+  </section>
+</div>
+
+<script>
+"use strict";
+/* ── 演示数据：over = 本项目覆盖（null 继承 / true 仅本项目开启 / false 仅本项目关闭）── */
+var state = {
+  master: true,
+  project: "dsh-plugin-daix",
+  tab: "all",
+  projects: {
+    "dsh-plugin-daix": { path: "D:/wsl/dsh-plugin-daix" },
+    "dsh-web": { path: "D:/wsl/dsh-web" }
+  },
+  servers: [
+    { name:"github", desc:"GitHub API：仓库 / issue / PR 读写", exposure:"deferred", enabled:true,
+      over:{ "dsh-plugin-daix":false }, tools:[
+        ["create_issue","deferred",null],["search_code","direct","direct"],
+        ["list_prs","deferred",null],["delete_repo","hidden",null]] , toolsTotal:12 },
+    { name:"gitlab", desc:"自建 GitLab 实例：MR / 流水线", exposure:"codemode", enabled:true,
+      over:{}, tools:[["list_mrs","codemode",null],["trigger_pipeline","codemode",null]], toolsTotal:8 },
+    { name:"sentry", desc:"错误追踪与堆栈检索", exposure:"deferred", enabled:false,
+      over:{ "dsh-plugin-daix":true }, tools:[["list_issues","deferred",null]], toolsTotal:6 },
+    { name:"internal-tools", desc:"内部运维：部署 / 日志", exposure:"direct", enabled:true,
+      over:{}, tools:[["deploy","direct",null],["tail_log","direct",null]], toolsTotal:3 }
+  ]
+};
+
+function projectOver(s){ var v = s.over[state.project]; return v === undefined ? null : v; }
+function effective(s){
+  if (!state.master) return false;
+  var o = projectOver(s);
+  return o === null ? s.enabled : o;
+}
+var EXPOSE = { codemode:"脚本目录", deferred:"按需加载", direct:"全量声明", hidden:"隐藏" };
+
+/* ── 渲染 ── */
+var listEl = document.getElementById("list");
+
+function el(tag, cls, text){
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function badge(exposure){ var b = el("span","mcp-badge",exposure); b.setAttribute("data-e",exposure); b.title = EXPOSE[exposure]; return b; }
+
+function stateLabel(s){
+  if (!state.master) return ["已停用","disabled"];
+  var o = projectOver(s);
+  if (o === false) return ["⚠ 本项目已关闭","off-project"];
+  if (o === true && !s.enabled) return ["↑ 仅本项目启用","on-project"];
+  return [s.enabled ? "已启用" : "已禁用", s.enabled ? "on" : "off"];
+}
+
+function renderMaster(){
+  var sw = document.getElementById("master");
+  sw.setAttribute("data-on", state.master);
+  var st = document.getElementById("masterState");
+  st.setAttribute("data-on", state.master);
+  st.textContent = state.master ? "已启用" : "已停用";
+  var banner = document.getElementById("banner");
+  banner.hidden = state.master;
+  banner.textContent = "MCP 已全局停用：所有服务器不连接，任何项目覆盖均不生效。重新启用后按各项目覆盖恢复。";
+}
+
+function renderContext(){
+  var meta = document.getElementById("meta");
+  if (!state.master){ meta.textContent = "4 个服务器 · 已停用"; return; }
+  var on = 0, off = 0, ov = 0, tools = 0;
+  state.servers.forEach(function(s){
+    if (effective(s)){ on++; tools += s.toolsTotal; } else off++;
+    if (projectOver(s) !== null) ov++;
+  });
+  meta.innerHTML = state.servers.length + " 个服务器 · " + tools + " 个工具可披露 · 本项目覆盖 <b>" + ov + "</b>";
+}
+
+function renderTabs(){
+  var defs = [
+    ["all","全部"],["on","已启用"],["off","已禁用"],["over","本项目覆盖"]
+  ];
+  var on=0, off=0, ov=0;
+  state.servers.forEach(function(s){
+    if (effective(s)) on++; else off++;
+    if (projectOver(s) !== null) ov++;
+  });
+  var counts = { all:state.servers.length, on:on, off:off, over:ov };
+  var tabs = document.getElementById("tabs");
+  tabs.textContent = "";
+  defs.forEach(function(d){
+    var t = el("button","mcp-tab", d[1]);
+    var n = el("span","n", String(counts[d[0]]));
+    t.appendChild(n);
+    t.setAttribute("data-active", state.tab === d[0]);
+    t.disabled = !state.master;
+    t.addEventListener("click", function(){ state.tab = d[0]; render(); });
+    tabs.appendChild(t);
+  });
+}
+
+function visibleServers(){
+  return state.servers.filter(function(s){
+    if (state.tab === "on") return effective(s);
+    if (state.tab === "off") return !effective(s);
+    if (state.tab === "over") return projectOver(s) !== null;
+    return true;
+  });
+}
+
+/* 全局开关（servers[n].enabled，写全局配置文件） */
+function gSwitch(s){
+  var wrap = el("span","mcp-gwrap");
+  wrap.appendChild(el("span","mcp-glabel","全局"));
+  var sw = el("button","mcp-switch");
+  sw.setAttribute("data-on", s.enabled);
+  sw.disabled = !state.master;
+  sw.title = "全局默认：" + (s.enabled ? "已启用" : "已禁用") + "（写入 ~/.dsh/plugins/mcp-gate/config.json）";
+  sw.appendChild(el("span","thumb"));
+  sw.addEventListener("click", function(e){
+    e.stopPropagation();
+    s.enabled = !s.enabled; render();
+  });
+  wrap.appendChild(sw);
+  return wrap;
+}
+
+/* 三态点击组（本项目覆盖：继承 / 项目开 / 项目关，一点即达） */
+function triSeg(s){
+  var o = projectOver(s);
+  var seg = el("div","mcp-triseg");
+  seg.setAttribute("data-over", o !== null);
+  seg.title = "本项目覆盖（" + state.projects[state.project].path + "/.dsh/mcp-gate.json）";
+  [
+    [null,  "继承",   "跟随全局：" + (s.enabled ? "开启" : "关闭")],
+    [true,  "项目开", s.enabled ? "与全局一致，记录为显式覆盖" : "覆盖全局关闭，本项目单独启用"],
+    [false, "项目关", s.enabled ? "覆盖全局开启，本项目单独禁用" : "与全局一致，记录为显式覆盖"]
+  ].forEach(function(d){
+    var b = el("button",null,d[1]);
+    b.title = d[2];
+    b.setAttribute("data-active", o === d[0]);
+    b.disabled = !state.master;
+    b.addEventListener("click", function(e){
+      e.stopPropagation();
+      if (d[0] === null) delete s.over[state.project];
+      else s.over[state.project] = d[0];
+      render();
+    });
+    seg.appendChild(b);
+  });
+  return seg;
+}
+
+function renderRow(s){
+  var eff = effective(s);
+  var row = el("div","mcp-row");
+  row.setAttribute("data-off", !eff);
+
+  var main = el("div","mcp-row-main");
+  main.appendChild(el("span","mcp-dot"));
+  var id = el("div","mcp-row-id");
+  var nm = el("div","mcp-row-name");
+  var code = el("code",null,s.name); nm.appendChild(code);
+  if (s.exposure === "direct") nm.appendChild(badge("direct"));
+  id.appendChild(nm);
+  var descLine = el("div","mcp-row-desc");
+  descLine.appendChild(document.createTextNode(s.desc));
+  var sl = stateLabel(s);
+  if (sl[0] !== "已启用" && sl[0] !== "已禁用"){
+    var lab = el("span","mcp-state-label"," · " + sl[0]);
+    lab.setAttribute("data-kind",sl[1]);
+    descLine.appendChild(lab);
+  }
+  id.appendChild(descLine);
+  main.appendChild(id);
+
+  main.appendChild(gSwitch(s));
+  main.appendChild(triSeg(s));
+  main.appendChild(el("span","mcp-tools-count",s.toolsTotal + " 工具"));
+  row.appendChild(main);
+
+  /* 展开详情 */
+  var det = el("div","mcp-detail");
+  det.hidden = true;
+
+  var t1 = el("p","mcp-detail-title","全局默认暴露（exposure）");
+  var seg = el("div","mcp-seg");
+  ["codemode","deferred","direct","hidden"].forEach(function(x){
+    var b = el("button",null,x + " · " + EXPOSE[x]);
+    b.setAttribute("data-active", s.exposure === x);
+    b.disabled = !state.master;
+    b.addEventListener("click", function(){ s.exposure = x; render(); });
+    seg.appendChild(b);
+  });
+  det.appendChild(t1); det.appendChild(seg);
+
+  var t2 = el("p","mcp-detail-title","工具级覆盖（toolExposure，可对单个工具改暴露）");
+  var table = el("div","mcp-tooltable");
+  s.tools.forEach(function(t){
+    var r = el("div","mcp-toolrow");
+    r.appendChild(el("code",null,"mcp__" + s.name + "__" + t[0]));
+    var effE = t[2] || s.exposure;
+    r.appendChild(el("span","eff","生效：" + effE));
+    var btn = el("button",null, t[2] ? "覆盖:" + t[2] + " ×" : "覆盖");
+    btn.setAttribute("data-over", !!t[2]);
+    btn.disabled = !state.master;
+    btn.addEventListener("click", function(){
+      var order = [null,"direct","deferred","codemode","hidden"];
+      var i = order.indexOf(t[2]);
+      t[2] = order[(i+1) % order.length];
+      render();
+    });
+    r.appendChild(btn);
+    table.appendChild(r);
+  });
+  det.appendChild(t2); det.appendChild(table);
+  det.appendChild(el("p","mcp-more","…等 " + (s.toolsTotal - s.tools.length) + " 个工具 · tool_search（BM25）索引所有 codemode/deferred 工具的名称与 schema"));
+  row.appendChild(det);
+
+  main.addEventListener("click", function(){ det.hidden = !det.hidden; });
+
+  return row;
+}
+
+function renderFoot(){
+  var f = document.getElementById("foot");
+  f.textContent = "变更即时写入配置并在下一轮请求生效：总开关与全局默认 → ~/.dsh/plugins/mcp-gate/config.json；项目覆盖 → <工作区>/.dsh/mcp-gate.json。tool_search 的解锁是会话内瞬态，不在此页管理。";
+}
+
+function render(){
+  renderMaster();
+  renderContext();
+  renderTabs();
+  listEl.textContent = "";
+  visibleServers().forEach(function(s){ listEl.appendChild(renderRow(s)); });
+  renderFoot();
+}
+
+/* ── 事件 ── */
+document.getElementById("master").addEventListener("click", function(){
+  state.master = !state.master; render();
+});
+document.getElementById("projSel").addEventListener("change", function(e){
+  state.project = e.target.value; render();
+});
+
+render();
+</script>
+</body>
+</html>

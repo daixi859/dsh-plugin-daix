@@ -11,11 +11,13 @@
         description: 仅文件操作、命令执行、网络、提问与技能工具，含 AGENTS.md 工作区指令。
         order: 5
         plugins:
-          # 身份提示词，不注册任何模型可见工具
+          # 身份提示词，不注册任何模型可见工具。
+          # prefix/suffix 是模板，渲染时严格对照已注册的 prompt 变量解析，
+          # 只有 provider 和 model 可用（dsh-agent-loop 注册）；工作目录由
+          # 运行时上下文作为必需项自动注入，写 {{cwd}} 会导致整轮渲染失败。
           - id: persona
             name: '@deepseek-ai/dsh-persona'
             config:
-              suffix: Your working directory is {{cwd}}.
               prefix: You are a coding agent powered by the {{model}} model.
           # 工作区指令：加载 ~/.dsh/AGENTS.md 与项目内各级 AGENTS.md / CLAUDE.md（64 KiB 渲染预算）
           - id: agent-instructions
