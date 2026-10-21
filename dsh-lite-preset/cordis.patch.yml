@@ -53,3 +53,11 @@
             name: '@deepseek-ai/dsh-skill-filesystem'
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
+          # Lite 专属工具遮蔽（本 bundle 导出的 Host 插件）：隐藏基座层
+          # （dsh-base）无条件挂载的 working_directory 模型工具。cwd 已由
+          # working-directory 服务每轮注入运行时上下文，shell 工具另有
+          # workdir 参数，该工具冗余。ctx.tools.restrict 作用于 lite preset
+          # 的 standing scope：仅加入 lite 的会话被遮蔽，standard 等其他
+          # 模式不受影响；working-directory 服务行保留，cwd 注入与持久 cd 照常。
+          - id: lite-tool-shield
+            name: '@local/dsh-lite-preset'
