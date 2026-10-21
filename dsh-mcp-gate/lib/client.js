@@ -154,6 +154,7 @@ window.__ModuleLoader__.load({
       hidden: "隐藏",
       globalSwitch: "全局",
       expandHint: "查看工具",
+      toolReset: "点击恢复继承（取消 per-tool 覆盖）",
       failed: "操作失败",
       addServer: "添加服务器",
       editServer: "编辑接入",
@@ -227,6 +228,7 @@ window.__ModuleLoader__.load({
       hidden: "Hidden",
       globalSwitch: "Global",
       expandHint: "View tools",
+      toolReset: "Click to inherit again (clear per-tool override)",
       failed: "Operation failed",
       addServer: "Add server",
       editServer: "Edit connection",
@@ -724,11 +726,11 @@ window.__ModuleLoader__.load({
         act(post("/plugins/mcp-gate/global", { server: server, exposure: exposure }));
       }
 
-      function setToolExposure(server, tool, current) {
+      function setToolExposure(server, tool, value) {
         act(post("/plugins/mcp-gate/global", {
           server: server,
           tool: tool,
-          toolExposure: current === "direct" ? null : "direct",
+          toolExposure: value,
         }));
       }
 
@@ -838,8 +840,8 @@ window.__ModuleLoader__.load({
               "span",
               {
                 className: "mcp-tool-name",
-                title: "direct / inherit",
-                onClick: function () { setToolExposure(server.name, tool.raw, tool.exposure); },
+                title: t("toolReset"),
+                onClick: function () { setToolExposure(server.name, tool.raw, null); },
               },
               tool.raw
             ),
@@ -861,7 +863,7 @@ window.__ModuleLoader__.load({
                     key: ex,
                     type: "button",
                     "data-on": tool.exposure === ex ? "true" : "false",
-                    onClick: function () { setToolExposure(server.name, tool.raw, ex); },
+                    onClick: function () { setToolExposure(server.name, tool.raw, tool.exposure === ex ? null : ex); },
                   },
                   ex
                 );
