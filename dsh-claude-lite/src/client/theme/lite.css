@@ -1,0 +1,8 @@
+/*
+ * The skin's one sheet, as the build inlines it: tokens, then the band, then
+ * the sidebar. The order is the cascade — the band's positions may reference
+ * the tokens, the sidebar's gates may override the band's structure rules.
+ */
+@import './tokens.css';
+@import './band.css';
+@import './sidebar.css';

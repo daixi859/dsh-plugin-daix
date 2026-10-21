@@ -1,0 +1,64 @@
+/*
+ * The band sheet: turn the pass's published geometry (engine/band.ts) into
+ * positions. Nothing here moves until the pass publishes both a band and a
+ * token: the rules gate on the html titlebar mark and the header's own
+ * [data-dsh-lite-header-band] tokens, so a web page, a hidden overlay or a
+ * null measure leaves the header exactly as the host drew it.
+ *
+ * Positions are the pass's custom properties on <body>; the !important marks
+ * where the sheet overrules host inline layout, one declaration at a time.
+ */
+
+/* ── The lifted title ──────────────────────────────────────────────── */
+[data-dsh-lite-header-band~='title'] [data-dsh-lite-part~='header-title'] {
+  position: fixed !important;
+  top: var(--dsh-lite-header-band-title-top) !important;
+  left: var(--dsh-lite-header-band-left) !important;
+  max-width: var(--dsh-lite-header-band-max) !important;
+  transform: translateY(-50%) !important;
+  z-index: 30;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+/* The row's flow slot collapses upward by the lift the pass measured. */
+[data-dsh-lite-header-band~='title'] [data-dsh-lite-part~='title-row'] {
+  position: relative;
+  top: var(--dsh-lite-header-band-row-lift, 0);
+  -webkit-app-region: no-drag;
+}
+[data-dsh-lite-header-band~='title'] [data-dsh-lite-part~='title-row'] [data-dsh-lite-part~='header-label'] {
+  display: flex !important;
+}
+
+/* ── The centred tab strip ─────────────────────────────────────────── */
+[data-dsh-lite-header-band~='tabs'] [data-dsh-lite-part~='view-tabs'] {
+  position: fixed !important;
+  left: var(--dsh-lite-header-band-tabs-left, 50%) !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  max-width: 60vw;
+  z-index: 31;
+  -webkit-app-region: no-drag;
+}
+
+/* ── The lifted utilities cluster ──────────────────────────────────── */
+[data-dsh-lite-header-band~='actions'] [data-dsh-lite-part~='header-utilities'],
+[data-dsh-lite-header-band~='actions'] [data-dsh-lite-part~='header-corner'] {
+  position: fixed !important;
+  top: calc(var(--dsh-frame-top-clearance, 48px) / 2) !important;
+  right: var(--dsh-lite-header-band-right) !important;
+  transform: translateY(-50%) !important;
+  margin: 0 !important;
+  z-index: 30;
+  -webkit-app-region: no-drag;
+}
+[data-dsh-lite-header-band~='actions'] [data-dsh-lite-part~='header-corner'] {
+  right: calc(var(--dsh-lite-header-band-right) - 0px);
+}
+
+/* The header that owns the strip loses its bottom edge: the band is the
+ * divider now. The hold comes from the walk (engine/parts-table.ts). */
+[data-dsh-lite-holds~='view-tabs'][data-dsh-lite-part~='conversation-header'] {
+  border-bottom-color: transparent;
+}

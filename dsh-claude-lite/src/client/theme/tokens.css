@@ -1,0 +1,61 @@
+/*
+ * The palette, as tokens and gates.
+ *
+ * The claude values are dsh-claude-style's claude palette (packages/client/src/theme/tokens.json,
+ * 档 claude), unchanged; only the custom-property names carry the lite
+ * prefix. Three gates select the档:
+ *
+ *   [data-dsh-lite]                                     — the skin runs (structure only)
+ *   [data-dsh-lite][data-dsh-lite-theme="claude"]       — claude dark
+ *   [data-dsh-lite][data-dsh-lite-theme="claude-light"] — claude light
+ *   [data-dsh-lite][data-dsh-lite-theme="host"]         — nothing: the host's own
+ *
+ * Every value a rule needs comes from one of these variables, so a档 is a
+ * variable block and nothing else. The --dsh-lite-user-* properties stay
+ * unset unless the settings form carries a value — the prefs mirror writes
+ * them inline on <html>, and they win by cascade over every default here.
+ */
+[data-dsh-lite] {
+  --dsh-lite-canvas: var(--dsh-lite-user-canvas, #141413);
+  --dsh-lite-sidebar-canvas: var(--dsh-lite-user-sidebar, #1c1b1a);
+  --dsh-lite-panel: #242320;
+  --dsh-lite-panel-2: #2e2c29;
+  --dsh-lite-border: rgba(255, 255, 255, 0.09);
+  --dsh-lite-border-2: rgba(255, 255, 255, 0.18);
+  --dsh-lite-accent: var(--dsh-lite-user-accent, #d97757);
+  --dsh-lite-accent-hover: #e08a6d;
+  --dsh-lite-accent-press: #c6613f;
+  --dsh-lite-ink: #faf9f5;
+  --dsh-lite-ink-secondary: #b0aea5;
+  --dsh-lite-ink-tertiary: #8f8d84;
+  --dsh-lite-ink-caption: #6b6a65;
+  --dsh-lite-hover-bg: rgba(255, 255, 255, 0.08);
+  --dsh-lite-hover-solid: #2e2c29;
+  --dsh-lite-scrollbar: rgba(58, 56, 51, 0.9);
+  --dsh-lite-scrollbar-hover: rgba(107, 106, 101, 0.9);
+  --dsh-lite-shadow-1: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --dsh-lite-shadow-2: 0 12px 32px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.14);
+  --dsh-lite-feedback: 120ms ease;
+  --dsh-lite-slide: 240ms ease;
+}
+[data-dsh-lite][data-dsh-lite-theme='claude-light'] {
+  --dsh-lite-canvas: var(--dsh-lite-user-canvas, #fcfcfb);
+  --dsh-lite-sidebar-canvas: var(--dsh-lite-user-sidebar, #fbfbf9);
+  --dsh-lite-panel: #fbfbf9;
+  --dsh-lite-panel-2: #f9f9f6;
+  --dsh-lite-border: #e8e6dc;
+  --dsh-lite-border-2: #dedcd2;
+  --dsh-lite-accent: var(--dsh-lite-user-accent, #d97757);
+  --dsh-lite-accent-hover: #c6613f;
+  --dsh-lite-accent-press: #b25535;
+  --dsh-lite-ink: #141413;
+  --dsh-lite-ink-secondary: #6e6a60;
+  --dsh-lite-ink-tertiary: #8f8a7e;
+  --dsh-lite-ink-caption: #a6a094;
+  --dsh-lite-hover-bg: rgba(0, 0, 0, 0.08);
+  --dsh-lite-hover-solid: #f0efe9;
+  --dsh-lite-scrollbar: rgba(208, 205, 193, 0.9);
+  --dsh-lite-scrollbar-hover: rgba(143, 138, 126, 0.8);
+  --dsh-lite-shadow-1: 0 4px 16px rgba(20, 20, 19, 0.1);
+  --dsh-lite-shadow-2: 0 12px 32px rgba(20, 20, 19, 0.1), 0 2px 8px rgba(20, 20, 19, 0.05);
+}

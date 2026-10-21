@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-brand="claude">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dsh-claude-lite 设计稿 · 侧边栏 + 标题栏</title>
+<style>
+  /* ============ 配色令牌（取自 dsh-claude-style tokens.json 的 claude 档） ============ */
+  :root[data-theme="dark"] {
+    --canvas: #141413;
+    --sidebar: #1c1b1a;
+    --surface: #242320;
+    --surface-2: #2e2c29;
+    --hover: rgba(255, 255, 255, 0.09);
+    --hover-2: rgba(255, 255, 255, 0.18);
+    --ink: #faf9f5;
+    --ink-2: #b0aea5;
+    --ink-3: #8f8d84;
+    --ink-4: #6b6a65;
+    --hairline: rgba(255, 255, 255, 0.08);
+    --hairline-2: rgba(255, 255, 255, 0.14);
+    --accent: #d97757;
+    --accent-hover: #e08a6d;
+    --accent-soft: #3a2a22;
+    --code-bg: #1e1e1d;
+    --page: #0c0c0b;
+    --frame-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+    --on-accent: #ffffff;
+  }
+  :root[data-theme="light"] {
+    --canvas: #fcfcfb;
+    --sidebar: #fcfcfb;
+    --surface: #fbfbf9;
+    --surface-2: #f0f0ef;
+    --hover: #e8e6dc;
+    --hover-2: #dedcd2;
+    --ink: #141413;
+    --ink-2: #6e6a60;
+    --ink-3: #8f8a7e;
+    --ink-4: #a6a094;
+    --hairline: #e8e6dc;
+    --hairline-2: #dedcd2;
+    --accent: #d97757;
+    --accent-hover: #c6613f;
+    --accent-soft: #e9dfd2;
+    --code-bg: #f6f6f4;
+    --page: #e9e7e2;
+    --frame-shadow: 0 24px 80px rgba(20, 20, 19, 0.18);
+    --on-accent: #ffffff;
+  }
+
+  /* ============ 页面底 ============ */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--page);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    padding: 20px 24px 56px;
+    transition: background 0.2s ease;
+  }
+
+  /* ============ 设计稿控制条 ============ */
+  .draft-bar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .draft-title {
+    font-size: 13px;
+    color: var(--ink-2);
+    margin-right: 8px;
+  }
+  .seg {
+    display: inline-flex;
+    border: 1px solid var(--hairline-2);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .seg button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--ink-2);
+    font: inherit;
+    font-size: 12px;
+    padding: 6px 14px;
+    cursor: pointer;
+  }
+  .seg button.on {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .seg button + button { border-left: 1px solid var(--hairline); }
+
+  /* ============ 窗口框 ============ */
+  .frame {
+    width: 1240px;
+    max-width: 100%;
+    height: 780px;
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: var(--canvas);
+    border: 1px solid var(--hairline-2);
+    box-shadow: var(--frame-shadow);
+  }
+
+  /* ============ 标题栏带（标题 + 页签抬进系统标题栏） ============ */
+  .titlebar {
+    height: 46px;
+    flex: none;
+    display: flex;
+    align-items: stretch;
+    background: var(--sidebar);
+    border-bottom: 1px solid var(--hairline);
+    -webkit-app-region: drag; /* 设计示意：整条为拖拽区，仅页签与按钮可点 */
+  }
+  .tb-brand {
+    width: 264px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 14px;
+    border-right: 1px solid var(--hairline);
+  }
+  .tb-brand .mark { width: 20px; height: 20px; flex: none; }
+  .tb-brand .word {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tb-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 6px 0 16px;
+  }
+  .tb-crumbs {
+    font-size: 12px;
+    color: var(--ink-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: none;
+    max-width: 300px;
+  }
+  .tb-crumbs b { color: var(--ink-2); font-weight: 500; }
+  .tb-crumbs .sep { margin: 0 6px; color: var(--ink-4); }
+
+  .tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .tab {
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 10px 0 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    color: var(--ink-2);
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .tab:hover { background: var(--hover); }
+  .tab.on { background: var(--surface-2); color: var(--ink); font-weight: 500; }
+  .tab .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .tab.on .dot { background: var(--accent); }
+  .tab:not(.on) .dot { background: var(--hairline-2); }
+  .tab .x {
+    width: 16px; height: 16px;
+    border-radius: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; color: var(--ink-4);
+  }
+  .tab .x:hover { background: var(--hover-2); color: var(--ink); }
+  .tab-new {
+    width: 26px; height: 26px;
+    flex: none;
+    border-radius: 7px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--ink-3);
+    font-size: 15px;
+    cursor: pointer;
+  }
+  .tab-new:hover { background: var(--hover); color: var(--ink); }
+
+  .tb-controls {
+    flex: none;
+    display: flex;
+    align-items: stretch;
+    -webkit-app-region: no-drag;
+  }
+  .tb-controls span {
+    width: 46px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--ink-3);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .tb-controls span:hover { background: var(--hover); color: var(--ink); }
+  .tb-controls span.close:hover { background: #e81123; color: #fff; }
+
+  /* ============ 主体：侧边栏 + 对话区 ============ */
+  .win-body { flex: 1; min-height: 0; display: flex; }
+
+  /* ---- 侧边栏：Claude Code 比例，紧凑 ---- */
+  .sidebar {
+    width: 264px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    background: var(--sidebar);
+    border-right: 1px solid var(--hairline);
+    padding: 10px 10px 8px;
+    overflow-y: auto;
+  }
+  .row {
+    height: 28px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--ink-2);
+    cursor: default;
+    user-select: none;
+  }
+  .row:hover { background: var(--hover); color: var(--ink); }
+  .row .ico {
+    width: 16px; height: 16px;
+    flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--ink-3);
+  }
+  .row:hover .ico { color: var(--ink-2); }
+  .row .label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .kbd {
+    font-size: 10.5px;
+    color: var(--ink-4);
+    border: 1px solid var(--hairline-2);
+    border-radius: 4px;
+    padding: 1px 5px;
+    line-height: 1.4;
+  }
+
+  /* 新会话：整行按钮，右侧 20px 圆形加号片，悬停旋转 */
+  .row-new .label { font-weight: 500; }
+  .chip {
+    width: 20px; height: 20px;
+    flex: none;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--ink-2);
+    transition: background 0.15s ease;
+  }
+  .chip svg { transition: transform 0.2s ease; }
+  .row-new:hover .chip { background: var(--accent-soft); color: var(--accent); }
+  .row-new:hover .chip svg { transform: rotate(90deg); }
+
+  /* 区块小标题 */
+  .sec {
+    margin: 16px 0 4px;
+    padding: 0 8px;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    color: var(--ink-4);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: none;
+  }
+  .sec .act { color: var(--ink-4); font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
+  .sec .act:hover { background: var(--hover); color: var(--ink-2); }
+
+  /* 会话行：激活态浅底 + 珊瑚点 */
+  .row-session.on { background: var(--hover); color: var(--ink); }
+  .row-session.on::before {
+    content: "";
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex: none;
+    margin: 0 -1px 0 1px;
+  }
+  .row-session .act {
+    display: none;
+    gap: 2px;
+    flex: none;
+  }
+  .row-session:hover .act { display: inline-flex; }
+  .row-session .act i {
+    width: 20px; height: 20px;
+    border-radius: 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-style: normal;
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .row-session .act i:hover { background: var(--hover-2); color: var(--ink); }
+  .row-session:hover .kbd { display: none; }
+
+  .row-project .cnt {
+    font-size: 10.5px;
+    color: var(--ink-4);
+    background: var(--hover);
+    border-radius: 8px;
+    padding: 1px 7px;
+  }
+
+  /* 页脚：账号 + 设置入口 */
+  .foot {
+    margin-top: auto;
+    padding-top: 6px;
+    border-top: 1px solid var(--hairline);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: none;
+  }
+  .avatar {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 11px;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: none;
+  }
+
+  /* ---- 对话区：宿主原样（插件不碰） ---- */
+  .convo {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--canvas);
+    position: relative;
+  }
+  .convo-note {
+    position: absolute;
+    top: 14px;
+    right: 18px;
+    font-size: 11px;
+    color: var(--ink-4);
+    border: 1px dashed var(--hairline-2);
+    border-radius: 6px;
+    padding: 4px 10px;
+    pointer-events: none;
+  }
+  .flow {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: 54px 40px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    font-size: 13.5px;
+    color: var(--ink-2);
+  }
+  .msg-user {
+    align-self: flex-end;
+    max-width: 68%;
+    background: var(--hover);
+    border-radius: 12px 12px 4px 12px;
+    padding: 9px 14px;
+    color: var(--ink);
+  }
+  .msg-assistant { max-width: 82%; color: var(--ink); line-height: 1.65; }
+  .msg-assistant p + p { margin-top: 8px; }
+  .msg-assistant code {
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    background: var(--code-bg);
+    border: 1px solid var(--hairline);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  .tool-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .tool-line .box {
+    width: 14px; height: 14px;
+    border: 1px solid var(--hairline-2);
+    border-radius: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 9px;
+    color: var(--accent);
+  }
+  .composer {
+    flex: none;
+    margin: 0 40px 18px;
+    border: 1px solid var(--hairline-2);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 10px 12px 8px;
+  }
+  .composer .ph { font-size: 13px; color: var(--ink-4); }
+  .composer .bar {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .composer .pill {
+    font-size: 11px;
+    color: var(--ink-3);
+    border: 1px solid var(--hairline-2);
+    border-radius: 6px;
+    padding: 3px 8px;
+  }
+  .composer .send {
+    margin-left: auto;
+    width: 26px; height: 26px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--on-accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px;
+  }
+
+  /* ============ 下方说明卡片 ============ */
+  .cards {
+    width: 1240px;
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 16px;
+  }
+  .card {
+    border: 1px solid var(--hairline-2);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 18px 20px;
+  }
+  .card h3 { font-size: 13px; color: var(--ink); margin-bottom: 12px; font-weight: 600; }
+  .set-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 0;
+    border-top: 1px solid var(--hairline);
+    font-size: 12.5px;
+    color: var(--ink-2);
+  }
+  .set-row:first-of-type { border-top: 0; }
+  .set-note { font-size: 11.5px; color: var(--ink-4); line-height: 1.6; margin-top: 10px; }
+  table.spec { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.spec th {
+    text-align: left;
+    color: var(--ink-4);
+    font-weight: 500;
+    padding: 4px 8px 4px 0;
+    border-bottom: 1px solid var(--hairline);
+    white-space: nowrap;
+  }
+  table.spec td { padding: 5px 8px 5px 0; color: var(--ink-2); border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  table.spec td:first-child { white-space: nowrap; color: var(--ink-3); }
+  table.spec tr:last-child td { border-bottom: 0; }
+  .sw {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border-radius: 3px;
+    border: 1px solid var(--hairline-2);
+    vertical-align: -2px;
+    margin-right: 6px;
+  }
+</style>
+</head>
+<body>
+
+  <!-- 设计稿控制条：预览切换，不是插件设置 -->
+  <div class="draft-bar">
+    <span class="draft-title">dsh-claude-lite · 设计稿预览</span>
+    <div class="seg" id="segBrand">
+      <button data-v="claude" class="on">品牌 Claude</button>
+      <button data-v="deepseek">品牌 DeepSeek</button>
+    </div>
+    <div class="seg" id="segTheme">
+      <button data-v="dark" class="on">暗色</button>
+      <button data-v="light">亮色</button>
+    </div>
+  </div>
+
+  <!-- 窗口框 -->
+  <div class="frame">
+
+    <!-- ① 标题栏带：品牌 ｜ 面包屑标题 ｜ 视图页签 ｜ 窗口控制 -->
+    <div class="titlebar">
+      <div class="tb-brand">
+        <svg class="mark" id="brandMark" viewBox="0 0 24 24" aria-hidden="true"></svg>
+        <span class="word">DeepSeek Harness</span>
+      </div>
+      <div class="tb-main">
+        <span class="tb-crumbs"><b>dsh-plugin-daix</b><span class="sep">/</span>最简插件设计稿</span>
+        <div class="tabs">
+          <span class="tab"><span class="dot"></span>侧边栏失效诊断<span class="x">×</span></span>
+          <span class="tab"><span class="dot"></span>宿主 0.2.1 对照<span class="x">×</span></span>
+          <span class="tab on"><span class="dot"></span>dsh-claude-lite 设计<span class="x">×</span></span>
+          <span class="tab-new">+</span>
+        </div>
+      </div>
+      <div class="tb-controls">
+        <span>—</span><span>▢</span><span class="close">✕</span>
+      </div>
+    </div>
+
+    <div class="win-body">
+
+      <!-- ② 侧边栏：紧凑 28px 行规格 -->
+      <aside class="sidebar">
+        <div class="row row-new" title="新会话">
+          <span class="ico">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 3.5h11M2.5 8h11M2.5 12.5h6"/></svg>
+          </span>
+          <span class="label">新会话</span>
+          <span class="chip">
+            <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M5 1v8M1 5h8"/></svg>
+          </span>
+        </div>
+        <div class="row" style="margin-top:2px">
+          <span class="ico"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="7" cy="7" r="4.2"/><path d="M13.5 13.5 10 10"/></svg></span>
+          <span class="label">搜索</span>
+        </div>
+
+        <div class="row" style="margin-top:14px">
+          <span class="ico"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><rect x="2" y="2.5" width="5" height="5" rx="1"/><rect x="9" y="2.5" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="4.5" rx="1"/><rect x="9" y="9" width="5" height="4.5" rx="1"/></svg></span>
+          <span class="label">工作区</span>
+        </div>
+        <div class="row">
+          <span class="ico"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.8 13.8 5v6L8 14.2 2.2 11V5L8 1.8Z"/><path d="M2.4 5.2 8 8.2l5.6-3M8 8.2v5.8"/></svg></span>
+          <span class="label">插件</span>
+        </div>
+        <div class="row">
+          <span class="ico"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.2 9.5 5.4l3.5.5-2.5 2.4.6 3.5L8 10.2l-3.1 1.6.6-3.5L3 5.9l3.5-.5L8 2.2Z"/></svg></span>
+          <span class="label">技能</span>
+        </div>
+
+        <div class="sec">今天 <span class="act">＋</span></div>
+        <div class="row row-session on"><span class="label">dsh-claude-lite 设计稿</span><span class="act"><i>✎</i><i>⋯</i></span></div>
+        <div class="row row-session"><span class="label">侧边栏失效诊断</span><span class="kbd">3</span><span class="act"><i>✎</i><i>⋯</i></span></div>
+        <div class="row row-session"><span class="label">宿主 0.2.1 契约核对</span><span class="act"><i>✎</i><i>⋯</i></span></div>
+
+        <div class="sec">昨天</div>
+        <div class="row row-session"><span class="label">fee-panel 设计稿评审</span><span class="act"><i>✎</i><i>⋯</i></span></div>
+        <div class="row row-session"><span class="label">cordis 补丁整理</span><span class="act"><i>✎</i><i>⋯</i></span></div>
+
+        <div class="sec">项目</div>
+        <div class="row row-project"><span class="ico"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M2 5.5c0-1.1.9-2 2-2h2.2l1.4 1.6H12c1.1 0 2 .9 2 2v4.4c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V5.5Z"/></svg></span><span class="label">dsh-plugin-daix</span><span class="cnt">12</span></div>
+        <div class="row row-project"><span class="ico"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M2 5.5c0-1.1.9-2 2-2h2.2l1.4 1.6H12c1.1 0 2 .9 2 2v4.4c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V5.5Z"/></svg></span><span class="label">dsh-claude-style</span><span class="cnt">7</span></div>
+
+        <div class="foot">
+          <div class="row"><span class="avatar">戴</span><span class="label">戴曦</span><span class="ico"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6 5 5M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4"/></svg></span></div>
+        </div>
+      </aside>
+
+      <!-- ③ 对话区：保持宿主原样，插件不绘制 -->
+      <main class="convo">
+        <div class="convo-note">对话区保持宿主原样 · 本插件不绘制</div>
+        <div class="flow">
+          <div class="msg-user">把侧边栏和顶部标题做成一个最简单的插件，先出设计稿。</div>
+          <div class="msg-assistant">
+            <p>已按 Claude Code 桌面样式整理：标题与页签抬进系统标题栏，侧边栏收成 <code>28px</code> 行规格的紧凑布局。</p>
+            <p>配色取自 <code>tokens.json</code> 的 claude 档：画布 <code>#141413</code>，侧栏 <code>#1c1b1a</code>，强调色 <code>#d97757</code>。</p>
+          </div>
+          <div class="tool-line"><span class="box">✓</span>read · dsh-claude-style/packages/client/src/theme/tokens.json</div>
+          <div class="msg-user">对话区不要动，保持宿主原样。</div>
+          <div class="msg-assistant"><p>明白，本插件只绘制侧边栏与标题栏带，对话区与输入区交还宿主。</p></div>
+        </div>
+        <div class="composer">
+          <div class="ph">给 DeepSeek 发消息…</div>
+          <div class="bar">
+            <span class="pill">glm-5.3-flash</span>
+            <span class="pill">⌂ 工作区</span>
+            <span class="send">➤</span>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ④ 设置页示意 + 设计规格 -->
+  <div class="cards">
+    <div class="card">
+      <h3>设置 · 外观（插件唯一一页设置）</h3>
+      <div class="set-row">
+        <span>品牌标记</span>
+        <div class="seg" id="segBrand2">
+          <button data-v="claude" class="on">Claude</button>
+          <button data-v="deepseek">DeepSeek</button>
+        </div>
+      </div>
+      <div class="set-row">
+        <span>配色</span>
+        <div class="seg" id="segTheme2">
+          <button data-v="dark" class="on">Claude 暗</button>
+          <button data-v="light">Claude 亮</button>
+        </div>
+      </div>
+      <p class="set-note">对话区与输入区保持宿主原样，本插件只绘制侧边栏与标题栏带；启用时禁用 dsh-claude-style，两份皮肤不叠加。</p>
+    </div>
+
+    <div class="card">
+      <h3>设计规格</h3>
+      <table class="spec">
+        <tr><th>部位</th><th>规格</th></tr>
+        <tr><td>标题栏带</td><td>高 46px，通栏；左段 264px 为品牌区（与侧栏同宽、同一底色，竖细线分隔）；面包屑 12px；页签高 32px、圆角 8px，激活页签实底 + 6px 珊瑚点；右端窗口控制 46px/格，悬停浅底、关闭键悬停红底。整条为拖拽区。</td></tr>
+        <tr><td>侧边栏</td><td>宽 264px，底色同标题栏带（暗 #1c1b1a），右侧 1px 细线。</td></tr>
+        <tr><td>行规格</td><td>所有行统一高 28px、圆角 6px、字号 13px、图标 16px、行距 2px；悬停浅底（暗 rgba(255,255,255,.09)）。</td></tr>
+        <tr><td>新会话</td><td>整行按钮，右侧 20px 圆形加号片；悬停加号片转强调色底、图标旋转 90°。</td></tr>
+        <tr><td>区块小标题</td><td>11px，弱字色，上边距 16px、下边距 4px；右侧悬停出「＋」。</td></tr>
+        <tr><td>会话行</td><td>激活行浅底 + 5px 珊瑚点；悬停显示 ✎ / ⋯ 操作，计数徽标隐藏。</td></tr>
+        <tr><td>页脚</td><td>上细线，账号行（20px 头像 + 名字）+ 设置齿轮，高 28px。</td></tr>
+        <tr><td>配色令牌</td><td>
+          <span class="sw" style="background:#141413"></span>画布 #141413　
+          <span class="sw" style="background:#1c1b1a"></span>侧栏 #1c1b1a　
+          <span class="sw" style="background:#242320"></span>面板 #242320<br>
+          <span class="sw" style="background:#d97757"></span>强调 #d97757　
+          <span class="sw" style="background:#faf9f5"></span>主字 #faf9f5　
+          <span class="sw" style="background:#b0aea5"></span>次字 #b0aea5<br>
+          亮色档：画布 #fcfcfb、主字 #141413、悬停 #e8e6dc（取自 tokens.json claude 档）。
+        </td></tr>
+        <tr><td>不绘制</td><td>对话区、输入区、消息流、代码块——保持宿主原样；插件样式表不写任何对话区规则。</td></tr>
+      </table>
+    </div>
+  </div>
+
+<script>
+  /* 品牌标记：Claude 十二芒星 / DeepSeek 鲸（示意形） */
+  function claudeMark() {
+    let rays = "";
+    for (let i = 0; i < 12; i++) {
+      rays += '<line x1="12" y1="12" x2="12" y2="3.2" transform="rotate(' + (i * 30) + ' 12 12)"/>';
+    }
+    return '<g stroke="#d97757" stroke-width="2.1" stroke-linecap="round">' + rays + '</g>';
+  }
+  function deepseekMark() {
+    const c = document.documentElement.getAttribute("data-theme") === "light" ? "#4d6bfe" : "#6a84ff";
+    return '<path fill="' + c + '" d="M12 3.4c4.6 0 7.8 2.6 8.4 6.2l2.4-1.5-1.1 4.3c-.8 3.9-4.7 6.6-9.7 6.6-5.4 0-9.4-3-9.4-7.2 0-2.7 1.5-4.7 3.9-5.9.4-1.6.8-2.1 1.6-2.1.9 0 1.5.7 1.9 1.6 .7-.1 1.3-.2 2-.2Z"/><circle cx="9.4" cy="9.4" r="1.1" fill="#fff"/>';
+  }
+  const root = document.documentElement;
+  const brandMark = document.getElementById("brandMark");
+  function setBrand(v) {
+    root.setAttribute("data-brand", v);
+    brandMark.innerHTML = v === "claude" ? claudeMark() : deepseekMark();
+    document.querySelectorAll("#segBrand button, #segBrand2 button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  }
+  function setTheme(v) {
+    root.setAttribute("data-theme", v);
+    if (root.getAttribute("data-brand") === "deepseek") brandMark.innerHTML = deepseekMark();
+    document.querySelectorAll("#segTheme button, #segTheme2 button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  }
+  document.querySelectorAll("#segBrand button, #segBrand2 button").forEach(b => b.addEventListener("click", () => setBrand(b.dataset.v)));
+  document.querySelectorAll("#segTheme button, #segTheme2 button").forEach(b => b.addEventListener("click", () => setTheme(b.dataset.v)));
+  document.querySelectorAll(".tabs .tab").forEach(t => t.addEventListener("click", () => {
+    document.querySelectorAll(".tabs .tab").forEach(x => x.classList.remove("on"));
+    t.classList.add("on");
+  }));
+  setBrand("claude");
+  /* URL 参数可直达某个组合：?theme=light&brand=deepseek */
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme") === "light" || q.get("theme") === "dark") setTheme(q.get("theme"));
+  if (q.get("brand") === "claude" || q.get("brand") === "deepseek") setBrand(q.get("brand"));
+</script>
+</body>
+</html>
