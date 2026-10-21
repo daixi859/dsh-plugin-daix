@@ -1,4 +1,5 @@
-# Agent preset lite：只保留 文件操作 / 命令执行 / 网络 / ask_user_question / skill。
+# Agent preset lite：文件操作 / 命令执行 / 网络 / ask_user_question / skill，
+# 外加 agent-instructions（加载 ~/.dsh/AGENTS.md 与项目内各级 AGENTS.md / CLAUDE.md）。
 # 基座服务（ctx.fs、ctx.subprocess、web、skills、attachments）由部署层提供，
 # 这里只挂工具行；用 plugin_manager 安装本 bundle 后，新会话即可在模式选择器中选择。
 - insert:
@@ -7,7 +8,7 @@
       config:
         id: lite
         name: 精简
-        description: 仅文件操作、命令执行、网络、提问与技能工具。
+        description: 仅文件操作、命令执行、网络、提问与技能工具，含 AGENTS.md 工作区指令。
         order: 5
         plugins:
           # 身份提示词，不注册任何模型可见工具
@@ -16,6 +17,11 @@
             config:
               suffix: Your working directory is {{cwd}}.
               prefix: You are a coding agent powered by the {{model}} model.
+          # 工作区指令：加载 ~/.dsh/AGENTS.md 与项目内各级 AGENTS.md / CLAUDE.md（64 KiB 渲染预算）
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
           # 命令执行：按平台启用 bash / pwsh
           - id: tool-bash
             name: '@deepseek-ai/dsh-tool-bash'

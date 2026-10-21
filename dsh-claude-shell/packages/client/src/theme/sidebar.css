@@ -141,11 +141,13 @@ body[data-dsh-claude-shell][data-ds-dark-theme] button[class*="newSession"]::bef
 
 /* ---------- the sidebar's panel rows (插件 + plugin entries) ---------- */
 /* The panel entries live in a `nav.panelList` whose own gap stacks on the row
-   margin, so the rows' 6px margin is the only spacing, and each row takes the
+   margin, so the rows' 6px margin is the only spacing; each row takes the
    new-session metrics — including the 20px icon box, so both labels start at the
-   same x. */
+   same x. The list's own bottom margin would add to the last row's, leaving
+   twice the air under the entries, so it is dropped. */
 body[data-dsh-claude-shell] nav[class*="panelList"] {
   gap: 0;
+  margin-bottom: 0;
 }
 body[data-dsh-claude-shell] button[class*="panelRow"] {
   display: flex;
@@ -236,6 +238,14 @@ body[data-dsh-claude-shell] [class*="sessionRow"] [class*="_time"] {
 body[data-dsh-claude-shell] [class*="sectionLabel"] {
   font-size: 12px;
   line-height: 16px;
+}
+
+/* A section's heading row — the 工作区 label with its actions — is one 32px line:
+   the height is stated rather than left to the heading's own padding, so every
+   section starts at the same y. */
+body[data-dsh-claude-shell] :is([data-pane="sidebar"], [class*="sidebarCol"]) [class*="sectionHeader"] {
+  height: 32px;
+  box-sizing: border-box;
 }
 
 /* Compact scale: shrunken heights, margins and paddings */
