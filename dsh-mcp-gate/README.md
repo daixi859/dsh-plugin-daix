@@ -14,15 +14,14 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 - 模型 search 命中 → 名字进 unlocked → restrict 名单收缩 → 下轮 schema 出现该工具。
 - `tools/change` 驱动重算；deny 名单幂等短路（排序比较相同则不动）防自激循环。
 
-## 内置连接器（推荐接入方式）
+## 内置连接器（唯一接入方式）
 
-`lib/connector.js` 内置 stdio / streamable-http 双传输 MCP 客户端：插件自身连接服务器、注册远程工具（`makeRemoteTool`），**不依赖官方 mcp-client patch 行、无需重启**。
+`lib/connector.js` 内置 stdio / streamable-http 双传输 MCP 客户端：插件自身连接服务器、注册远程工具（`makeRemoteTool`），**无需重启**。
 
 - 连接池：`pool: Map<name, {conn, cfgKey}>`，`cfgKey = JSON.stringify(connector)`；`syncConnections()` 串行化对账（断开多余/重建变化/新建缺失），任何配置落盘后调用。
 - **连接器工具注册到全局 ctx**（`syncGlobalTools`，`globalTools` 簿记）：agent scope 注册的工具不进 `schemas()` 快照、restrict 也折叠不了（restrict 只作用于继承面）——注册到 agent scope 的版本症状是"模型能直接调用但搜索找不到、也无法折叠"。
 - 连接条件：master 开 && 全局 enabled（项目覆盖只影响工具可见性，不影响连接）。
-- 远程工具注册按 agent 同步（`syncMcpTools`，幂等对齐 want 集，同名撞车标记 mcpRegistered 防刷）；`${VAR}` 引用在进程环境取值注入（密钥不明文落盘）。
-- 遗留 patch 接入（profile patch 里的 `mcp-<name>` insert 块）继续只读兼容，UI 标"遗留"徽章并一键 `POST /migrate` 迁移（删 patch 块 + 写 config.json connector + 即时连接）。
+- 同名工具撞车标记 `mcpRegistered` 防反复重试；`${VAR}` 引用在进程环境取值注入（密钥不明文落盘）。
 
 ## 三层配置
 
@@ -36,18 +35,18 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 
 ## HTTP 接口（webServer，/plugins/mcp-gate/*）
 
-- `GET /state?cwd=<工作区>`：master + 每服务器视图（live 工具 ∪ 全局配置 ∪ 项目覆盖 ∪ patch 接入声明，含 effective 状态与 per-tool 明细；`connector` 字段为编辑面板预填视图，`editable` 标记可编辑）。
+- `GET /state?cwd=<工作区>`：master + 每服务器视图（live 工具 ∪ 全局配置 ∪ 项目覆盖，含 effective 状态与 per-tool 明细；`connector` 字段为编辑面板预填视图）。
 - `POST /master` `{enabled}`；`POST /global` `{server, enabled?, exposure?, tool?, toolExposure?}`（`tool` 路径 null 删覆盖）；`POST /project` `{cwd, server, enabled: true|false|null}`。均落盘后全 agent 重算。
-- `POST /add` `{name, description?, transport, command?, args?, env?, cwd?, url?, headers?}`：写入 config.json `servers[name].connector`（description 一并存档）并即时连接，返回 `applied: "live", status, tools`；重名（live ∪ 全局 ∪ patch）拒绝。
-- `POST /update` `{name, description?, ...同上}`：替换 connector 与 description（enabled/exposure/toolExposure 保留）→ cfgKey 变化自动断开重连（`applied: "live"`）；对遗留 patch 服务器编辑即自动迁移（删 patch 块）。transport 切换时清理反侧字段。
-- `POST /remove` `{server}`：连接器托管 → 断开 + 删配置（`applied: "live"`）；仅存于 patch → 删 insert 块（`applied: "restart-required"`）。
-- `POST /migrate` `{server?}`：patch 声明的服务器迁到内置连接器并即时连接，缺省迁移全部；返回 `{migrated: [...]}`。
+- `POST /add` `{name, description?, transport, command?, args?, env?, cwd?, url?, headers?}`：写入 config.json `servers[name].connector`（description 一并存档）并即时连接，返回 `applied: "live", status, tools`；重名（live ∪ 全局）拒绝。
+- `POST /update` `{name, description?, ...同上}`：替换 connector 与 description（enabled/exposure/toolExposure 保留）→ cfgKey 变化自动断开重连（`applied: "live"`）；transport 切换时清理反侧字段。
+- `POST /remove` `{server}`：断开 + 删配置，即时生效。
+- `POST /import` `{json: "<粘贴文本>"}`：批量导入 Claude Code / Cursor 约定格式 `{"mcpServers": {"<name>": {"command","args","env","cwd" | "url","headers","type", "description"}}}`（也接受直接 `{name: {...}}`）。逐项映射为连接器并即时连接；重名跳过（`skipped`）、单项失败不中断（`failed`）、`type:"sse"` 按 HTTP 导入并在 `sseWarnings` 提示；返回 `{added, skipped, failed, sseWarnings, connections}`。
 
 ### 接入管理与 ${ENV} 引用
 
 - add/update 的 `env`/`headers` 值支持 `${VAR}` 引用：连接时从进程环境取值注入，**密钥不明文落盘**；UI 对疑似密钥（token/key/secret/password/authorization）明文值黄条警示。
-- 编辑面板回显遗留 patch 的 `!!js` 值时反解回 `${VAR}` 形态。
 - 内置模板：GitHub (HTTP)、Playwright (stdio)、Fetch (stdio)。
+- **粘贴 JSON 导入**：添加服务器弹窗顶部切到「粘贴 JSON 导入」，粘贴 `mcpServers` 配置一键导入（`POST /import`），可直接从 Claude Code / Cursor 的配置复制。
 
 
 ## agent 侧时序要点（踩坑记录）
@@ -63,13 +62,6 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 - **Windows spawn npx/uvx 必须 `shell: true`**（它们是 .cmd 批处理，不带 shell 直接 ENOENT），且 `child.on("error")` 必须监听——否则 spawn 失败成为未捕获异常打崩宿主进程。stdio 传输经 `transport.onFail` 把 spawn 错误快速失败传导给 initialize。
 - `setx` 设置的环境变量对**已运行的进程不可见**（包括从旧 Explorer 启动的 GUI）；改完后要重启 GUI 进程（必要时注销重登）。UI 连接错误显示服务器返回的真实错误文本，先看错误再排查。
 
-### patch 管理（编辑弹窗）踩坑
-
-- **绝不用 `configEditor.edit` 改 insert 块服务器**：它在 patch 文档里找不到非-insert 的同 id 行时，会 append 一个顶层 config 行（dsh-config-editor `findLastIndex` 失败即 `document.add`），与 insert 块构成 duplicate id，且 config 是 loader 内存态转写（会把弹窗里已改掉的旧 headers 键名带回来复活）。handleUpdate 一律走 `updateServerInPatch`（文本级删块重建）。
-- `stripStrayServerRows`：add/update/remove 写盘前自动清除 `mcp-<name>` 的顶层遗留直接 entry（configEditor append 遗留、用户手贴的 2 空格块），isClient 校验保证不误删非 mcp-client 的同 id 行。
-- **删块必须循环吞块头**：块结构是 `# mcp-gate: 注释` ← `- insert:` ← id 行。removeBlockFromText 早期版本从 id 行开删、不吞块头，留下 `- insert:` 空壳项（Loader 视作 insert: null）；后来只吞一行又漏掉注释。现为循环吞到不动为止 + `cleanEmptyInsertShells` 在所有写盘前兜底清理空壳。
-- 所有 patch 写入经 `writePatchChecked`：`.mcp-gate.bak` 备份 + debugLog 打点（写前/写后字节数），出现"改了又被改回"先对比 bak 与 debug.log。
-
 ## 调试
 
 环境变量 `MCP_GATE_DEBUG=1` → 日志写 `~/.dsh/plugins/mcp-gate/debug.log`（apply / agent/created / register / recompute / restrict deny 名单 / cwd 解析重试）。
@@ -77,7 +69,7 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 ## 测试
 
 - `node test/connector-unit.mjs`：内置连接器单测（17 项）——RPC 纯函数（ndjson/SSE/错误提取）、stdio 真连 mini-mcp-server、node:http 假 streamable-http 服务器（SSE+session 头）、死端口与超时路径。
-- `node test/patch-unit.mjs`：patch 管理逻辑单测（43 项）。从 `lib/index.js` 大括号配对提取纯函数，覆盖 buildInsertBlock→readPatchServers 往返（stdio+env / http+!!js）、追加、删除、就地更新、`.bak`、desktop 真实 patch 只读解析、normalizeServerInput 校验、connectorView/jsToEnvRef 显示转换、stripStrayServerRows 遗留行清理、cleanEmptyInsertShells 空壳清理。
+- `node test/config-unit.mjs`：配置与导入逻辑单测（25 项）。从 `lib/index.js` 大括号配对提取纯函数，覆盖 normalizeServerInput 校验、connectorView 编辑预填（`${ENV}` 原样回填）、parseMcpServersJson/fromImportedEntry 的映射与错误路径。
 - E2E 见下节；`test/mini-mcp-server.js`（echo/time_now/add 三工具）为验证 fixture。
 
 ## E2E 复跑（headless）
@@ -87,5 +79,5 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 pwsh -NoProfile -ExecutionPolicy Bypass -File <abs>/test/e2e-live.ps1
 # 断言：final 含 echo: hello-connector（mcp_search 解锁 → mcp__demo__echo 调用成功）
 # 注意：必须用 pwsh 7 执行（Windows PowerShell 5.1 按 ANSI 读 UTF-8 脚本会解析错乱）
-# 旧版场景（patch 接入）fixture：test/e2e-patch.yml 只含 zai 模型行；proj-disabled / proj-enabled 项目覆盖目录
+# 其它 fixture：test/e2e-patch.yml 只含 zai 模型行；proj-disabled / proj-enabled 项目覆盖目录
 ```

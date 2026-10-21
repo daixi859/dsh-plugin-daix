@@ -2,13 +2,13 @@
 //
 // 目标：MCP 工具渐进式披露（按 pi coding-agent 的 exposure 模型）+ 运行时接入管理。
 //
-// 接入两层来源（v0.3 起）：
-//   1. 官方 @deepseek-ai/dsh-mcp-client（patch 里的 per-server 插件实例，遗留；可迁移）
-//   2. 内置连接器（lib/connector.js）：服务器清单在 config.json 的 servers[name].connector，
-//      运行时直连（stdio 子进程 / streamable-http），工具动态注册/注销，免重启。
+// 接入来源（v0.4 起，单一来源）：
+//   内置连接器（lib/connector.js）：服务器清单在 config.json 的 servers[name].connector，
+//   运行时直连（stdio 子进程 / streamable-http），工具动态注册/注销，免重启。
+//   旧版 profile patch（@deepseek-ai/dsh-mcp-client）接入方式已移除。
 // 工具名统一 `mcp__<serverName>__<rawName>`。
 //
-// 可见性控制（对两种来源一致）：
+// 可见性控制：
 //   exposure = direct   → 全量声明
 //   exposure = deferred → 折叠（restrict 移除），agent 可调 mcp_search 检索解锁，
 //                         命中后下一轮请求重新出现
@@ -28,7 +28,7 @@
 //   - 连接建立/重连后 syncGlobalTools() 把工具注册到全局 ctx（tools/change 触发存量 agent 重算）
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { appendFileSync, copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { connectServer } from "./connector.js";
@@ -666,7 +666,7 @@ export function apply(ctx) {
         globalTools.set(toolName, ctx.tools.register(makeRemoteTool(conn, tool)));
         debugLog(`global register ${toolName}`);
       } catch (error) {
-        // 同名工具已存在（如官方 mcp-client patch 接入同时注册）：标记已处理，不影响别的工具
+        // 同名工具已存在（重复注册）：标记已处理，不影响别的工具
         debugLog(`global register ${toolName} failed: ${error && error.message}`);
         globalTools.set(toolName, null); // 防止反复重试刷日志
       }
@@ -868,277 +868,13 @@ export function apply(ctx) {
     "mcp-gate: listeners",
   );
 
-  // ── 服务器接入管理（写 profile 主 patch 的 mcp-client insert 行）──────────
+  // ── 服务器接入管理（config.json 的 servers[name].connector）──────────────
   //
-  // 职责边界：mcp-client 实例的接入声明在 Cordis composition 里。本插件：
-  //   add    → 文本级 append 一个 `- insert:` 块（新服务器，重启后由 Loader 接入）
-  //   remove → 文本级移除该块（同上，重启生效）
-  //   update → configEditor.edit(entry) 改已加载 entry 的 config（Loader reconcile，热生效）
-  // patch 文件含用户注释，必须文本级操作而非整文件重序列化；写入前留 .bak。
-
-  const MCP_CLIENT_NAME = "@deepseek-ai/dsh-mcp-client";
-  const SERVER_NAME_RE = /^[A-Za-z0-9_-]{1,32}$/;
-
-  function profilePatchPath() {
-    try {
-      const editor = ctx.get("configEditor");
-      if (editor && typeof editor.documentPath === "string" && editor.documentPath.length > 0) {
-        return editor.documentPath;
-      }
-    } catch {}
-    const dir = process.env.DSH_PROFILE_DIR;
-    if (dir && dir.trim().length > 0) return join(dir.trim(), "cordis.patch.yml");
-    return join(dshHome(), "profiles", process.env.DSH_PROFILE || "desktop", "cordis.patch.yml");
-  }
-
-  /** YAML 标量：单引号字面（内部 ' 翻倍）。 */
-  function yqScalar(value) {
-    return "'" + String(value).replace(/'/g, "''") + "'";
-  }
-
-  /** flow 数组：args 用。元素按单引号标量序列化。 */
-  function yqFlowArray(items) {
-    return "[" + items.map((item) => yqScalar(item)).join(", ") + "]";
-  }
-
-  /** `${VAR}` 引用 → `!!js` 表达式（Loader 在加载时求值，值不落盘明文）。
-   * 无引用的值返回 null（调用方按普通标量处理）。 */
-  function envRefToJs(value) {
-    const text = String(value);
-    if (!/\$\{[A-Za-z_][A-Za-z0-9_]*\}/.test(text)) return null;
-    const expr = "`" + text.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, "${process.env.$1}")
-      .replace(/\\/g, "\\\\") + "`";
-    return "!!js " + yqScalar(expr);
-  }
-
-  function yqValue(value) {
-    const asJs = envRefToJs(value);
-    if (asJs !== null) return asJs;
-    const text = String(value);
-    if (/^[-?:,\[\]{}#&*!|>'"%@`]|:\s|\s$/.test(text) || text.trim() === "") return yqScalar(text);
-    return text;
-  }
-
-  function yqMap(map, indent) {
-    const pad = " ".repeat(indent);
-    return Object.entries(map)
-      .map(([key, value]) => {
-        const asJs = envRefToJs(value);
-        const rendered = asJs !== null ? asJs : yqScalar(value);
-        return pad + yqScalar(key) + ": " + rendered;
-      })
-      .join("\n");
-  }
-
-  function buildInsertBlock(server) {
-    const lines = [
-      "# mcp-gate: " + server.name + " — added by mcp-gate UI",
-      "- insert:",
-      "    - id: mcp-" + server.name,
-      "      name: " + yqScalar(MCP_CLIENT_NAME),
-      "      config:",
-      "        serverName: " + server.name,
-    ];
-    if (server.transport === "streamable-http") {
-      lines.push("        transport: streamable-http");
-      lines.push("        url: " + yqValue(server.url));
-      const headers = server.headers || {};
-      const keys = Object.keys(headers);
-      if (keys.length > 0) {
-        lines.push("        headers:");
-        lines.push(yqMap(headers, 10));
-      }
-    } else {
-      lines.push("        transport: stdio");
-      lines.push("        command: " + yqValue(server.command));
-      const args = Array.isArray(server.args) ? server.args.filter((a) => String(a).length > 0) : [];
-      if (args.length > 0) lines.push("        args: " + yqFlowArray(args));
-      const env = server.env || {};
-      const envKeys = Object.keys(env);
-      if (envKeys.length > 0) {
-        lines.push("        env:");
-        lines.push(yqMap(env, 10));
-      }
-      if (typeof server.cwd === "string" && server.cwd.length > 0) {
-        lines.push("        cwd: " + yqValue(server.cwd));
-      }
-    }
-    lines.push("        failOnStartupError: false");
-    return lines.join("\n") + "\n";
-  }
-
-  function stripQuotes(text) {
-    const t = text.trim();
-    if (t.length >= 2 && t.startsWith("'") && t.endsWith("'")) {
-      return t.slice(1, -1).replace(/''/g, "'");
-    }
-    if (t.length >= 2 && t.startsWith('"') && t.endsWith('"')) {
-      return t.slice(1, -1).replace(/\\(.)/g, "$1");
-    }
-    return t;
-  }
-
-  /** 引号感知的 flow 数组拆分：['a', 'b c'] → ["a", "b c"]。 */
-  function parseFlowArray(text) {
-    const inner = text.trim().replace(/^\[/, "").replace(/\]$/, "").trim();
-    if (inner === "") return [];
-    const out = [];
-    let current = "";
-    let quote = null;
-    for (const ch of inner) {
-      if (quote) {
-        if (ch === quote) quote = null;
-        else current += ch;
-      } else if (ch === "'" || ch === '"') {
-        quote = ch;
-      } else if (ch === ",") {
-        out.push(current.trim());
-        current = "";
-      } else {
-        current += ch;
-      }
-    }
-    if (current.trim().length > 0) out.push(current.trim());
-    return out.map(stripQuotes);
-  }
-
-  function parseScalar(text) {
-    const t = text.trim();
-    if (t.startsWith("[")) return parseFlowArray(t);
-    const asJs = t.startsWith("!!js");
-    if (asJs) return t; // 表达式原样保留（含 !!js 前缀），编辑面板展示为 env 引用
-    return stripQuotes(t);
-  }
-
-  /**
-   * 受限解析：读 profile patch 里全部 dsh-mcp-client insert 行。
-   * 返回 { [serverName]: { name, transport, command, args, env, url, headers, cwd } }。
-   * 只处理已知键；块式与 flow 两种缩进形态都认。解析失败返回空表（不阻塞管理功能）。
-   */
-  function readPatchServers(patchText) {
-    const servers = {};
-    const lines = String(patchText).split(/\r?\n/);
-    let i = 0;
-    while (i < lines.length) {
-      const line = lines[i];
-      const topInsert = /^- insert:\s*$/.test(line);
-      if (!topInsert) {
-        i += 1;
-        continue;
-      }
-      i += 1;
-      while (i < lines.length) {
-        const itemMatch = lines[i].match(/^ {4}- id: (.+)$/);
-        if (!itemMatch) {
-          if (/^(- |[A-Za-z#])/.test(lines[i])) break; // 顶层 item / 注释 → insert 块结束
-          i += 1;
-          continue;
-        }
-        const rowId = stripQuotes(itemMatch[1]);
-        // 向前看：本行是否 dsh-mcp-client 实例（6 空格 name 字段）
-        let j = i + 1;
-        let isMcpClient = false;
-        let configIdx = -1;
-        while (
-          j < lines.length &&
-          !/^ {4}- id: /.test(lines[j]) &&
-          !/^- /.test(lines[j]) &&
-          !/^[A-Za-z#]/.test(lines[j])
-        ) {
-          const nameMatch = lines[j].match(/^ {6}name: (.+)$/);
-          if (nameMatch && stripQuotes(nameMatch[1]) === MCP_CLIENT_NAME) isMcpClient = true;
-          if (/^ {6}config:\s*$/.test(lines[j])) configIdx = j;
-          j += 1;
-        }
-        const blockEnd = j;
-        if (isMcpClient && configIdx > 0) {
-          const server = { name: rowId.startsWith("mcp-") ? rowId.slice(4) : rowId };
-          let k = configIdx + 1;
-          let nestedKey = null; // "args" | "env" | "headers" | null
-          while (k < lines.length && k < blockEnd && /^ {8}/.test(lines[k])) {
-            const field = lines[k].match(/^ {8}([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/);
-            const nestedItem = lines[k].match(/^ {10}(?:- )?(.+)$/);
-            if (field) {
-              const [, key, rest] = field;
-              nestedKey = rest.trim() === "" ? key : null;
-              if (rest.trim() !== "") {
-                if (key === "args") server.args = parseScalar(rest);
-                else if (key === "env" || key === "headers") { /* 不应出现，防御 */ }
-                else server[key] = parseScalar(rest);
-              } else if (key === "args" || key === "env" || key === "headers") {
-                server[key] = server[key] || (key === "args" ? [] : {});
-              } else {
-                nestedKey = null;
-              }
-            } else if (nestedKey && nestedItem) {
-              const valueText = nestedItem[1];
-              if (nestedKey === "args") {
-                server.args = server.args || [];
-                server.args.push(parseScalar(valueText.replace(/^- /, "")));
-              } else {
-                server[nestedKey] = server[nestedKey] || {};
-                const kv = valueText.match(/^([^:]+):\s*(.*)$/);
-                if (kv) server[nestedKey][stripQuotes(kv[1])] = parseScalar(kv[2]);
-              }
-            }
-            k += 1;
-          }
-          if (server.name && SERVER_NAME_RE.test(server.name)) servers[server.name] = server;
-        }
-        i = blockEnd;
-      }
-    }
-    return servers;
-  }
-
-  function readPatchText() {
-    const path = profilePatchPath();
-    try {
-      return { path, text: readFileSync(path, "utf8") };
-    } catch (error) {
-      if (error && error.code === "ENOENT") return { path, text: "[]\n" };
-      throw error;
-    }
-  }
-
-  /** 写 patch 的安全网：.bak 备份 → 写入。不引入 yaml 解析依赖：append/remove 都是行级操作、
-   * 内容由本插件序列化；若用户手改出坏 YAML，Loader 重启时会报错，可用 .bak 恢复。 */
-  /** 纯文本变换：删除空壳 insert 项（"- insert:" 行而其下没有任何 4 空格 item），
-   * 连同紧邻的 "# mcp-gate:" 注释头。来源：旧版 removeBlockFromText 不吞块头在 patch
-   * 里留下的 "- insert:" 空项（Loader 视作 insert: null）。所有 patch 写盘前兜底清理。 */
-  function cleanEmptyInsertShells(text) {
-    const lines = text.split(/\r?\n/);
-    const out = [];
-    for (let i = 0; i < lines.length; ) {
-      if (lines[i] === "- insert:") {
-        let j = i + 1;
-        while (j < lines.length && lines[j].trim() === "") j += 1;
-        const hasItem = j < lines.length && /^ {4}\S/.test(lines[j]);
-        if (!hasItem) {
-          // 空壳：连同上方连续的 mcp-gate 注释行一起删
-          let start = out.length;
-          while (start > 0 && out[start - 1].startsWith("# mcp-gate:")) start -= 1;
-          out.length = start;
-          i = j;
-          continue;
-        }
-      }
-      out.push(lines[i]);
-      i += 1;
-    }
-    return out.join("\n");
-  }
-
-  function writePatchChecked(path, nextText) {
-    nextText = cleanEmptyInsertShells(nextText);
-    let before = -1;
-    try {
-      before = statSync(path).size;
-      copyFileSync(path, path + ".mcp-gate.bak");
-    } catch {} // 首次写入（文件还不存在）没有备份
-    writeFileSync(path, nextText, "utf8");
-    debugLog(`patch write ${path}: ${before}B -> ${Buffer.byteLength(nextText, "utf8")}B`);
-  }
+  // add/update/remove 全部落到 config.json 并即时 syncConnections：
+  //   新服务器立即连接、工具注册；删除立即断开；改 connector 立即重连。
+  // 不写 profile patch，无需重启。
+  //
+  // connectorView(server) 把配置里的 connector 转成编辑面板预填视图（${ENV} 原样保留）。
 
   function normalizeServerInput(body) {
     const name = String(body && body.name ? body.name : "").trim();
@@ -1184,167 +920,25 @@ export function apply(ctx) {
     return out;
   }
 
-  /** 显示转换：`!!js \`...${process.env.VAR}...\`` → `...${VAR}...`（编辑面板预填用）。
-   * 兼容 yqScalar 包裹形态 `!!js '\`...\`'`。 */
-  function jsToEnvRef(value) {
-    const match = String(value).match(/^!!js\s+'?`([\s\S]*)`'?$/);
-    if (!match) return value;
-    return match[1]
-      .replace(/\$\{process\.env\.([A-Za-z_][A-Za-z0-9_]*)\}/g, "${$1}")
-      .replace(/\\\\/g, "\\");
-  }
-
-  /** 编辑面板预填视图：patch 解析结果 → ${ENV} 引用形态的普通对象。 */
+  /** 编辑面板预填视图：config.json 里的 connector（${ENV} 引用原样保留，客户端直接回填）。 */
   function connectorView(server) {
-    if (!server) return null;
-    const view = { name: server.name, transport: server.transport === "streamable-http" ? "streamable-http" : "stdio" };
-    const mapValue = (value) =>
-      Array.isArray(value)
-        ? value.map(jsToEnvRef)
-        : value && typeof value === "object"
-          ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, jsToEnvRef(v)]))
-          : jsToEnvRef(value);
-    for (const key of ["command", "cwd", "url"]) {
-      if (server[key] != null) view[key] = jsToEnvRef(server[key]);
-    }
-    for (const key of ["args", "env", "headers"]) {
-      if (server[key] != null) view[key] = mapValue(server[key]);
+    const connector = globalEntry(server).connector;
+    if (!connector) return null;
+    const view = {
+      name: server,
+      transport: connector.transport === "streamable-http" ? "streamable-http" : "stdio",
+    };
+    if (view.transport === "streamable-http") {
+      view.url = connector.url || "";
+      view.headers = { ...(connector.headers || {}) };
+    } else {
+      view.command = connector.command || "";
+      view.args = Array.isArray(connector.args) ? connector.args.slice() : [];
+      view.env = { ...(connector.env || {}) };
+      if (connector.cwd) view.cwd = connector.cwd;
     }
     return view;
   }
-
-  /** add：清理遗留顶层行后 append 独立 insert 块。返回 applied 状态。 */
-  function addServerToPatch(server) {
-    const { path, text } = readPatchText();
-    // 先清掉遗留的顶层直接 entry（configEditor append / 手贴），再在干净文本上查重——
-    // 否则遗留行会挡住重新添加，且与新增 insert 块构成 duplicate id。
-    const { text: stripped, removed } = stripStrayServerRows(text, server.name);
-    const existing = readPatchServers(stripped);
-    // 查重不只看标准 insert 块：其他来源（bundle 层等）的 4 空格 - id: mcp-<name> 也算已存在
-    const idLine = new RegExp("^\\s*-\\s+id:\\s*[\"']?mcp-" + server.name + "[\"']?\\s*$", "m");
-    if (existing[server.name] || idLine.test(stripped)) {
-      throw new Error(`server "${server.name}" already exists in profile patch`);
-    }
-    const trimmed = stripped.length > 0 && stripped.endsWith("\n") ? stripped : stripped + "\n";
-    writePatchChecked(path, trimmed + (removed > 0 ? "" : "\n") + buildInsertBlock(server));
-    return "restart-required";
-  }
-
-  /** 纯文本变换：定位并删除 mcp-<name> 的 insert item 块。返回 { text, found }。 */
-  function removeBlockFromText(text, name) {
-    const lines = text.split(/\r?\n/);
-    const marker = "- id: mcp-" + name;
-    let start = -1;
-    for (let i = 0; i < lines.length; i += 1) {
-      if (lines[i] === "    " + marker) {
-        // 确认是 mcp-client 实例而非恰好同 id 的其他行
-        let isClient = false;
-        for (let j = i + 1; j < Math.min(i + 4, lines.length); j += 1) {
-          const m = lines[j].match(/^ {6}name: (.+)$/);
-          if (m) {
-            isClient = stripQuotes(m[1]) === MCP_CLIENT_NAME;
-            break;
-          }
-        }
-        if (isClient) {
-          start = i;
-          break;
-        }
-      }
-    }
-    if (start < 0) return { text, found: false };
-    const idIdx = start;
-    // 吞块头：上方紧邻的连续注释行 + "- insert:" 行（结构 id ← "- insert:" ← "# 注释" ← 空行，
-    // 循环吞到不动为止，否则留下 "# mcp-gate:" 注释或 "- insert:" 空壳项）
-    let head = start;
-    for (;;) {
-      if (head > 0 && (lines[head - 1].startsWith("#") || lines[head - 1] === "- insert:")) {
-        head -= 1;
-        continue;
-      }
-      break;
-    }
-    start = head;
-    let end = lines.length;
-    // 边界从原 id 行之后找（head 前移过，若从 head+1 找会把自家 id 行误当下一块）
-    for (let i = idIdx + 1; i < lines.length; i += 1) {
-      if (/^ {4}- id: /.test(lines[i]) || /^- /.test(lines[i])) {
-        end = i;
-        break;
-      }
-    }
-    // 吞掉块后紧跟的空行
-    while (end < lines.length && lines[end].trim() === "") end += 1;
-    return { text: lines.slice(0, start).concat(lines.slice(end)).join("\n"), found: true };
-  }
-
-  /** remove：删掉 mcp-<name> 的 insert item（4 空格缩进块）。 */
-  function removeServerFromPatch(name) {
-    const { path, text } = readPatchText();
-    const { text: stripped, removed: strayRemoved } = stripStrayServerRows(text, name);
-    const { text: next, found } = removeBlockFromText(stripped, name);
-    if (!found && !strayRemoved) return "not-in-patch"; // 不在 patch（如 bundle 层定义）：由 handleRemove 继续清理全局条目
-    writePatchChecked(path, next);
-    return "restart-required";
-  }
-
-  /** 纯文本变换：删除 patch 里 mcp-<name> 的"顶层直接 entry"行块（非 4 空格 insert item）。
-   * 来源有二：configEditor.edit 对 insert 块 entry 写 config 时会 append 顶层行
-   * （dsh-config-editor findLastIndex 找不到非-insert 同 id 行就 document.add），以及用户手贴。
-   * 这类行与 insert 块构成 duplicate id，且其 config 是 loader 内存态的转写（含过期的
-   * headers 键名），必须清除。返回 { text, removed }。 */
-  function stripStrayServerRows(text, name) {
-    const lines = text.split(/\r?\n/);
-    const out = [];
-    let removed = 0;
-    for (let i = 0; i < lines.length; ) {
-      const m = lines[i].match(/^- id: mcp-([A-Za-z0-9_-]{1,32})\s*$/);
-      // 仅匹配顶层（0 缩进）的 - id: mcp-<name>；insert item 是 4 空格缩进，不会命中
-      if (m && (name === undefined || m[1] === name)) {
-        // 确认 name 行是 mcp-client 实例而非恰好同 id 的其他配置
-        let isClient = false;
-        for (let j = i + 1; j < Math.min(i + 4, lines.length); j += 1) {
-          const nm = lines[j].match(/^\s{2}name: (.+)$/);
-          if (nm) {
-            isClient = stripQuotes(nm[1]) === MCP_CLIENT_NAME;
-            break;
-          }
-        }
-        if (isClient) {
-          let end = lines.length;
-          for (let k = i + 1; k < lines.length; k += 1) {
-            if (/^- /.test(lines[k]) || /^ {4}- id: /.test(lines[k])) { end = k; break; }
-          }
-          while (end < lines.length && lines[end].trim() === "") end += 1;
-          i = end;
-          removed += 1;
-          continue;
-        }
-      }
-      out.push(lines[i]);
-      i += 1;
-    }
-    return { text: out.join("\n"), removed };
-  }
-
-  /** update 的 patch 路径：清理遗留顶层行 + 删旧 insert 块 + append 新块，一次写盘。
-   * insert 块定义的服务器不走 configEditor.edit——它找不到非-insert 同 id 行时会
-   * append 一个顶层 config 行（duplicate id + 过期 headers 键名），见 stripStrayServerRows。 */
-  function updateServerInPatch(server) {
-    const { path, text } = readPatchText();
-    const { text: stripped, removed } = stripStrayServerRows(text, server.name);
-    const { text: without, found } = removeBlockFromText(stripped, server.name);
-    if (!found && !removed) {
-      throw new Error(`server "${server.name}" not found in profile patch`);
-    }
-    const base = without.length > 0 && without.endsWith("\n") ? without : without + "\n";
-    writePatchChecked(path, base + "\n" + buildInsertBlock(server));
-    return "restart-required";
-  }
-
-  // ── HTTP 路由（webServer 晚绑定）──
-
-
 
   function sendJson(res, status, payload) {
     const body = JSON.stringify(payload);
@@ -1373,8 +967,8 @@ export function apply(ctx) {
     });
   }
 
-  /** server 视图聚合：实际注册 ∪ 全局配置 ∪ 项目覆盖 ∪ patch 接入声明。 */
-  function buildServerViews(rootSchemas, projectServers, patchServers) {
+  /** server 视图聚合：实际注册 ∪ 全局配置 ∪ 项目覆盖。 */
+  function buildServerViews(rootSchemas, projectServers) {
     const live = new Map(); // server → [{ raw, name, description, paramText }]
     for (const tool of rootSchemas) {
       if (typeof tool.name !== "string" || !tool.name.startsWith(MCP_PREFIX)) continue;
@@ -1389,7 +983,6 @@ export function apply(ctx) {
     }
     const names = new Set([...live.keys(), ...Object.keys(globalConfig.servers)]);
     if (projectServers) for (const name of Object.keys(projectServers)) names.add(name);
-    if (patchServers) for (const name of Object.keys(patchServers)) names.add(name);
 
     const servers = [];
     for (const server of [...names].sort()) {
@@ -1412,8 +1005,6 @@ export function apply(ctx) {
       });
       const poolEntry = pool.get(server);
       const conn = poolEntry ? poolEntry.conn : undefined;
-      const legacy = Boolean(patchServers && patchServers[server]); // patch 里还有块（官方 mcp-client）
-      const connector = g.connector || (legacy ? patchServers[server] : undefined);
       servers.push({
         name: server,
         toolCount: tools.length,
@@ -1423,12 +1014,11 @@ export function apply(ctx) {
         toolExposure: g.toolExposure || {},
         projectEnabled,
         enabled,
-        connector: connectorView(connector),
-        editable: true, // 无 connector 的条目也要可编辑（补配置即成为托管服务器）
-        managed: Boolean(g.connector), // 内置连接器托管（可热操作）
-        legacy, // patch 块定义（需迁移/重启）
-        connectorMissing: !connector,
-        connStatus: conn ? conn.status : legacy ? "external" : "disconnected",
+        connector: connectorView(server),
+        connectorMissing: !g.connector,
+        editable: true,
+        managed: Boolean(g.connector),
+        connStatus: conn ? conn.status : "disconnected",
         connError: conn && conn.error ? conn.error : undefined,
         connTools: conn && conn.status === "connected" ? conn.tools.length : 0,
         tools: rows,
@@ -1447,17 +1037,11 @@ export function apply(ctx) {
         rootSchemas = typeof tools?.schemas === "function" ? tools.schemas() : [];
       } catch {}
       const projectServers = cwd ? (await loadProjectOverrides(cwd)).servers : {};
-      let patchServers = {};
-      try {
-        patchServers = readPatchServers(readPatchText().text);
-      } catch (error) {
-        debugLog(`readPatchServers failed: ${error && error.message}`);
-      }
       sendJson(res, 200, {
         ok: true,
         master: globalConfig.mcpEnabled !== false,
         workspacePath: cwd,
-        servers: buildServerViews(rootSchemas, projectServers, patchServers),
+        servers: buildServerViews(rootSchemas, projectServers),
       });
     } catch (error) {
       sendJson(res, 500, {
@@ -1545,23 +1129,120 @@ export function apply(ctx) {
     }
   }
 
+  /** 现有服务器名全集：config.json ∪ live 工具前缀。 */
+  function collectServerNames() {
+    const names = new Set(Object.keys(globalConfig.servers));
+    try {
+      const tools = ctx.get("tools");
+      for (const t of (tools && tools.schemas ? tools.schemas() : [])) {
+        if (typeof t.name === "string" && t.name.startsWith(MCP_PREFIX)) {
+          names.add(splitToolName(t.name).server);
+        }
+      }
+    } catch {}
+    return names;
+  }
+
+  /** 粘贴 JSON 解析：兼容 {"mcpServers": {...}}（Claude Code / Cursor 约定）与直接 {name: {...}}。 */
+  function parseMcpServersJson(text) {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("expected a JSON object");
+    }
+    let map = parsed;
+    if (parsed.mcpServers && typeof parsed.mcpServers === "object" && !Array.isArray(parsed.mcpServers)) {
+      map = parsed.mcpServers;
+    }
+    const keys = Object.keys(map);
+    if (keys.length === 0) throw new Error('no servers found (expected {"mcpServers": {...}})');
+    // 直接顶层对象若自身就是 server 体（有 command/url）而没有名字，无法导入
+    if (keys.every((k) => ["command", "url", "args", "env", "type", "description"].includes(k))) {
+      throw new Error("servers must be keyed by name: {\"mcpServers\": {\"<name>\": {...}}}");
+    }
+    return map;
+  }
+
+  /** 业界 mcpServers 条目 → normalizeServerInput 输入。stdio 看 command，http 看 url；type:"sse" 按 http 导入并在结果中警告。 */
+  function fromImportedEntry(name, spec) {
+    if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
+      throw new Error("entry must be an object");
+    }
+    const type = typeof spec.type === "string" ? spec.type.toLowerCase() : "";
+    const out = { name };
+    if (typeof spec.description === "string") out.description = spec.description;
+    if (spec.command) {
+      out.transport = "stdio";
+      out.command = spec.command;
+      out.args = spec.args;
+      out.env = spec.env;
+      if (typeof spec.cwd === "string") out.cwd = spec.cwd;
+    } else if (spec.url) {
+      out.transport = "streamable-http";
+      out.url = spec.url;
+      out.headers = spec.headers;
+    } else {
+      throw new Error("entry needs command (stdio) or url (http)");
+    }
+    if (type === "sse") out.sseWarning = true;
+    return out;
+  }
+
+  /** POST /import {json: "<粘贴文本>"}：批量导入 mcpServers JSON，重名跳过，单项失败不中断。 */
+  async function handleImport(req, res) {
+    try {
+      const body = JSON.parse(await readBody(req));
+      const text = typeof body?.json === "string" ? body.json : "";
+      if (!text.trim()) throw new Error("json text required");
+      const map = parseMcpServersJson(text);
+      const names = collectServerNames();
+      const added = [];
+      const skipped = [];
+      const failed = [];
+      const sseWarnings = [];
+      for (const [name, spec] of Object.entries(map)) {
+        try {
+          if (names.has(name)) {
+            skipped.push({ name, reason: "name already in use" });
+            continue;
+          }
+          const input = fromImportedEntry(String(name).trim(), spec);
+          const server = normalizeServerInput(input);
+          const { name: n, ...connector } = server;
+          const entry = { enabled: true, connector };
+          if (typeof input.description === "string" && input.description.trim()) {
+            entry.description = input.description.trim().slice(0, 250);
+          }
+          globalConfig.servers[n] = entry;
+          names.add(n);
+          added.push(n);
+          if (input.sseWarning) sseWarnings.push(n);
+        } catch (error) {
+          failed.push({ name, error: String(error && error.message ? error.message : error) });
+        }
+      }
+      if (added.length > 0) {
+        await saveGlobalConfig();
+        await syncConnections();
+        recomputeAll();
+      }
+      const connections = {};
+      for (const n of added) {
+        const p = pool.get(n);
+        connections[n] = p
+          ? { status: p.conn.status, tools: p.conn.status === "connected" ? p.conn.tools.length : 0, error: p.conn.error || null }
+          : null;
+      }
+      sendJson(res, 200, { ok: true, added, skipped, failed, sseWarnings, connections });
+    } catch (error) {
+      sendJson(res, 400, { ok: false, error: String(error && error.message ? error.message : error) });
+    }
+  }
+
   async function handleAdd(req, res) {
     try {
       const raw = JSON.parse(await readBody(req));
       const server = normalizeServerInput(raw);
-      const names = new Set(Object.keys(globalConfig.servers));
-      try {
-        const tools = ctx.get("tools");
-        for (const t of (tools && tools.schemas ? tools.schemas() : [])) {
-          if (typeof t.name === "string" && t.name.startsWith(MCP_PREFIX)) {
-            names.add(splitToolName(t.name).server);
-          }
-        }
-      } catch {}
-      try {
-        const patch = readPatchServers(readPatchText().text);
-        for (const name of Object.keys(patch)) names.add(name);
-      } catch {}
+      const names = collectServerNames();
       if (names.has(server.name)) {
         throw new Error(`server name "${server.name}" is already in use`);
       }
@@ -1599,17 +1280,11 @@ export function apply(ctx) {
       const raw = JSON.parse(await readBody(req));
       const server = normalizeServerInput(raw);
       const { name, ...connector } = server;
-      let entry = globalConfig.servers[name];
-      const inPatch = readPatchServers(readPatchText().text)[name];
-      if (!entry && !inPatch) {
+      const entry = globalConfig.servers[name];
+      if (!entry) {
         throw new Error(`server "${name}" not found`);
       }
-      if (inPatch) {
-        // 遗留 patch 服务器（官方 mcp-client 块）：编辑即迁移到内置连接器
-        removeServerFromPatch(name);
-      }
-      if (!entry) entry = globalConfig.servers[name] = { enabled: true };
-      // 只动 connector 与 description；enabled/exposure/toolExposure 保留（entry 无 connector 时是补全配置）
+      // 只动 connector 与 description；enabled/exposure/toolExposure 保留
       entry.connector = connector;
       const desc = typeof raw.description === "string" ? raw.description.trim().slice(0, 250) : "";
       if (desc) entry.description = desc;
@@ -1645,27 +1320,21 @@ export function apply(ctx) {
         sendJson(res, 400, { ok: false, error: "server name invalid" });
         return;
       }
-      // 连接器托管的服务器：断开 + 删配置，即时生效
+      // 断开 + 删配置，即时生效
       const p = pool.get(server);
       if (p) {
         p.conn.close();
         pool.delete(server);
       }
       const hadEntry = delete globalConfig.servers[server];
-      let patchNote = "";
-      if (!p && !hadEntry) {
-        // 遗留 patch 块（bundle/官方 mcp-client）：删 patch 块，仍需重启卸载
-        const applied = removeServerFromPatch(server);
-        patchNote = applied === "restart-required" ? "; removed from profile patch, restart DSH to fully unload" : "";
-      }
       await saveGlobalConfig();
       syncGlobalTools(); // 注销该服务器的全局工具
       recomputeAll();
       sendJson(res, 200, {
         ok: true,
         server,
-        applied: p || hadEntry ? "live" : "restart-required",
-        note: (p || hadEntry ? "disconnected and removed immediately" : "legacy patch server") + patchNote,
+        applied: "live",
+        note: p || hadEntry ? "disconnected and removed immediately" : "not configured",
       });
     } catch (error) {
       sendJson(res, 400, {
@@ -1675,56 +1344,6 @@ export function apply(ctx) {
     }
   }
 
-  /** 遗留 patch 块 → config.json connector，一键迁移（可选指定 server；默认全部）。 */
-  async function handleMigrate(req, res) {
-    try {
-      const args = await readBody(req);
-      const only = args ? (JSON.parse(args)?.server ?? null) : null;
-      const patchServers = readPatchServers(readPatchText().text);
-      const names = only ? [only] : Object.keys(patchServers);
-      const migrated = [];
-      const skipped = [];
-      for (const name of names) {
-        const raw = patchServers[name];
-        if (!raw) {
-          skipped.push({ name, reason: "not in profile patch" });
-          continue;
-        }
-        let connector;
-        try {
-          const { name: _n, ...cfg } = normalizeServerInput(raw);
-          connector = sanitizeConnector(cfg);
-        } catch (error) {
-          skipped.push({ name, reason: String(error && error.message) });
-          continue;
-        }
-        if (!connector) {
-          skipped.push({ name, reason: "connector config invalid" });
-          continue;
-        }
-        const existing = globalConfig.servers[name];
-        globalConfig.servers[name] = { ...(existing || { enabled: true }), connector };
-        const applied = removeServerFromPatch(name);
-        migrated.push({ name, patchRemoved: applied === "restart-required" });
-      }
-      await saveGlobalConfig();
-      await syncConnections();
-      recomputeAll();
-      sendJson(res, 200, {
-        ok: true,
-        migrated,
-        skipped,
-        note: migrated.length > 0 ? "migrated to built-in connector, live now" : "nothing to migrate",
-      });
-    } catch (error) {
-      sendJson(res, 400, {
-        ok: false,
-        error: String(error && error.message ? error.message : error),
-      });
-    }
-  }
-
-  let routesRegistered = false;
   const registerRoutes = () => {
     const web = ctx.get("webServer");
     if (web === undefined) return false;
@@ -1736,9 +1355,9 @@ export function apply(ctx) {
       web.register({ kind: "exact", path: "/plugins/mcp-gate/global", handler: handleGlobal }),
       web.register({ kind: "exact", path: "/plugins/mcp-gate/project", handler: handleProject }),
       web.register({ kind: "exact", path: "/plugins/mcp-gate/add", handler: handleAdd }),
+      web.register({ kind: "exact", path: "/plugins/mcp-gate/import", handler: handleImport }),
       web.register({ kind: "exact", path: "/plugins/mcp-gate/update", handler: handleUpdate }),
       web.register({ kind: "exact", path: "/plugins/mcp-gate/remove", handler: handleRemove }),
-      web.register({ kind: "exact", path: "/plugins/mcp-gate/migrate", handler: handleMigrate }),
     ];
     ctx.effect(
       () => () => {

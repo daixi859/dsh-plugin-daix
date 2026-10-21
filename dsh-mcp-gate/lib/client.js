@@ -52,7 +52,6 @@ window.__ModuleLoader__.load({
 .mcp-row-name{color:var(--dsw-alias-label-primary);align-items:center;gap:6px;font-size:14px;font-weight:500;line-height:22px;display:flex}
 .mcp-badge{border:1px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-tertiary);border-radius:4px;flex:none;padding:0 5px;font-size:11px;font-weight:400;line-height:16px}
 .mcp-badge[data-live="true"]{border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 45%,transparent);color:var(--dsw-alias-state-success-primary)}
-.mcp-badge[data-legacy="true"]{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-label) 45%,transparent);color:var(--dsw-alias-state-warn-label)}
 .mcp-row-desc{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;overflow:hidden}
 .mcp-row-desc .mcp-overridden{color:var(--dsw-alias-state-warn-label)}
 .mcp-switch{box-sizing:border-box;width:36px;height:20px;border:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-module-platform);cursor:pointer;border-radius:10px;flex:none;padding:0;position:relative;transition:background .12s,border-color .12s}
@@ -155,6 +154,17 @@ window.__ModuleLoader__.load({
       globalSwitch: "全局",
       expandHint: "查看工具",
       toolReset: "点击恢复继承（取消 per-tool 覆盖）",
+      tabForm: "手动填写",
+      tabJson: "粘贴 JSON 导入",
+      importSubmit: "导入",
+      importPlaceholder: '{\n  "mcpServers": {\n    "my-server": {\n      "command": "node",\n      "args": ["/path/to/server.mjs"],\n      "description": "一句话说明这个服务器的用途"\n    }\n  }\n}',
+      importHint: "兼容 Claude Code / Cursor 的 mcpServers 格式：command+args 为 stdio，url+headers 为 HTTP；可一次导入多个，重名自动跳过。",
+      errJsonEmpty: "请先粘贴 JSON",
+      errJsonParse: "JSON 格式错误",
+      importDone: "已导入",
+      importSkipped: "跳过",
+      importFailed: "失败",
+      importNothing: "没有可导入的服务器",
       failed: "操作失败",
       addServer: "添加服务器",
       editServer: "编辑接入",
@@ -180,16 +190,10 @@ window.__ModuleLoader__.load({
       liveNote: "已连接，立即生效",
       liveFailed: "连接失败：",
       removedLiveNote: "已断开并移除，立即生效",
-      removedPatchNote: "遗留 patch 服务器已删除，重启 DSH 后完全卸载",
-      legacyBadge: "遗留",
       managedBadge: "即时",
-      migrateBtn: "迁移到内置连接器",
-      migrateBar: "检测到旧版 profile patch 接入的服务器：迁移后可即时生效、免重启管理",
-      migrateDone: "迁移完成，已即时连接",
       connConnected: "已连接",
       connError: "连接失败",
       connMissing: "未配置连接 · 点 ✎ 补全后立即连接",
-      connExternal: "外部接入",
       connDisconnected: "未连接",
       plaintextPatch: "疑似明文密钥：将直接写入配置文件，建议改用 ${ENV_VAR} 引用",
       envRefHint: "检测到 ${VAR} 引用：密钥不明文落盘，进程环境注入",
@@ -229,6 +233,17 @@ window.__ModuleLoader__.load({
       globalSwitch: "Global",
       expandHint: "View tools",
       toolReset: "Click to inherit again (clear per-tool override)",
+      tabForm: "Manual",
+      tabJson: "Import JSON",
+      importSubmit: "Import",
+      importPlaceholder: '{\n  "mcpServers": {\n    "my-server": {\n      "command": "node",\n      "args": ["/path/to/server.mjs"],\n      "description": "One-line description of what this server is for"\n    }\n  }\n}',
+      importHint: "Accepts the Claude Code / Cursor mcpServers format: command+args = stdio, url+headers = HTTP. Multiple servers allowed; duplicates are skipped.",
+      errJsonEmpty: "Paste JSON first",
+      errJsonParse: "Invalid JSON",
+      importDone: "Imported",
+      importSkipped: "Skipped",
+      importFailed: "Failed",
+      importNothing: "Nothing to import",
       failed: "Operation failed",
       addServer: "Add server",
       editServer: "Edit connection",
@@ -254,16 +269,10 @@ window.__ModuleLoader__.load({
       liveNote: "Connected, effective immediately",
       liveFailed: "Connection failed: ",
       removedLiveNote: "Disconnected and removed, effective immediately",
-      removedPatchNote: "Legacy patch server removed; restart DSH to fully unload",
-      legacyBadge: "Legacy",
       managedBadge: "Live",
-      migrateBtn: "Migrate to built-in connector",
-      migrateBar: "Servers still wired through the legacy profile patch: migrate for instant, restart-free management",
-      migrateDone: "Migrated and connected immediately",
       connConnected: "Connected",
       connError: "Connection failed",
       connMissing: "No connection configured · click ✎ to add one",
-      connExternal: "External",
       connDisconnected: "Disconnected",
       envRefHint: "${VAR} reference detected: secrets stay out of the config file",
       plaintextWarn: "Looks like a plaintext secret: it will be written verbatim into the config file; prefer a ${ENV_VAR} reference",
@@ -395,6 +404,47 @@ window.__ModuleLoader__.load({
       var errState = useState(null);
       var formError = errState[0];
       var setFormError = errState[1];
+      var jsonModeState = useState(false);
+      var jsonMode = jsonModeState[0];
+      var setJsonMode = jsonModeState[1];
+      var jsonTextState = useState("");
+      var jsonText = jsonTextState[0];
+      var setJsonText = jsonTextState[1];
+      var jsonErrState = useState(null);
+      var jsonError = jsonErrState[0];
+      var setJsonError = jsonErrState[1];
+
+      /** 添加弹窗顶部的模式切换：[手动填写 | 粘贴 JSON]。编辑模式无此切换。 */
+      function modeSeg() {
+        if (props.mode !== "add") return null;
+        return React.createElement(
+          "div",
+          { className: "mcp-seg", style: { margin: "0 0 4px" } },
+          [
+            { id: "form", label: tr("tabForm") },
+            { id: "json", label: tr("tabJson") },
+          ].map(function (opt) {
+            return React.createElement(
+              "button",
+              {
+                key: opt.id,
+                type: "button",
+                "data-on": (jsonMode ? "json" : "form") === opt.id ? "true" : "false",
+                onClick: function () { setJsonMode(opt.id === "json"); setFormError(null); setJsonError(null); },
+              },
+              opt.label
+            );
+          })
+        );
+      }
+
+      function submitImport() {
+        var text = jsonText.trim();
+        if (!text) { setJsonError(tr("errJsonEmpty")); return; }
+        try { JSON.parse(text); } catch (e) { setJsonError(tr("errJsonParse") + ": " + String((e && e.message) || e)); return; }
+        setJsonError(null);
+        props.onImport(text);
+      }
 
       function patch(next) {
         setForm(function (prev) { return Object.assign({}, prev, next); });
@@ -519,11 +569,49 @@ window.__ModuleLoader__.load({
         );
       }
 
+      if (jsonMode) {
+        return React.createElement(
+          "div",
+          { className: "mcp-modal" },
+          React.createElement("h3", { className: "mcp-modal-title" }, tr("addServer")),
+          modeSeg(),
+          React.createElement(
+            "div",
+            { className: "mcp-field" },
+            React.createElement("span", { className: "mcp-field-label" }, tr("tabJson")),
+            React.createElement("textarea", {
+              className: "mcp-textarea",
+              style: { minHeight: "180px", fontFamily: "var(--ds-font-family-code, monospace)", fontSize: "12px" },
+              placeholder: tr("importPlaceholder"),
+              value: jsonText,
+              onChange: function (e) { setJsonText(e.target.value); },
+            }),
+            React.createElement("div", { className: "mcp-hint" }, tr("importHint"))
+          ),
+          jsonError ? React.createElement("p", { className: "mcp-error" }, jsonError) : null,
+          React.createElement(
+            "div",
+            { className: "mcp-modal-actions" },
+            React.createElement(
+              "button",
+              { type: "button", className: "mcp-btn", onClick: props.onClose },
+              tr("cancel")
+            ),
+            React.createElement(
+              "button",
+              { type: "button", className: "mcp-btn mcp-btn-primary", onClick: submitImport },
+              tr("importSubmit")
+            )
+          )
+        );
+      }
+
       var isHttp = form.transport === "streamable-http";
       return React.createElement(
         "div",
         { className: "mcp-modal" },
         React.createElement("h3", { className: "mcp-modal-title" }, props.mode === "edit" ? tr("editServer") : tr("addServer")),
+        modeSeg(),
         React.createElement(
           "div",
           { className: "mcp-field" },
@@ -750,21 +838,32 @@ window.__ModuleLoader__.load({
         );
       }
 
-      function removeServer(name) {
-        setConfirming(null);
+      function importServers(text) {
+        setModal(null);
         act(
-          post("/plugins/mcp-gate/remove", { server: name }).then(function (result) {
-            var live = result && result.applied === "live";
-            setNote({ kind: live ? "ok" : "warn", text: live ? t("removedLiveNote") : t("removedPatchNote") });
+          post("/plugins/mcp-gate/import", { json: text }).then(function (result) {
+            var parts = [];
+            var added = (result && result.added) || [];
+            var skipped = (result && result.skipped) || [];
+            var failed = (result && result.failed) || [];
+            if (added.length > 0) parts.push(t("importDone") + " " + added.length + " (" + added.join(", ") + ")");
+            if (skipped.length > 0) {
+              parts.push(t("importSkipped") + ": " + skipped.map(function (s) { return s.name + " — " + s.reason; }).join("; "));
+            }
+            if (failed.length > 0) {
+              parts.push(t("importFailed") + ": " + failed.map(function (s) { return s.name + " — " + s.error; }).join("; "));
+            }
+            if (parts.length === 0) parts.push(t("importNothing"));
+            setNote({ kind: failed.length > 0 ? "warn" : "ok", text: parts.join(" · ") });
           })
         );
       }
 
-      function migrateLegacy() {
+      function removeServer(name) {
+        setConfirming(null);
         act(
-          post("/plugins/mcp-gate/migrate", {}).then(function (result) {
-            var n = result && result.migrated ? result.migrated.length : 0;
-            setNote({ kind: n > 0 ? "ok" : "warn", text: n > 0 ? t("migrateDone") + " ×" + n : result && result.note ? result.note : t("failed") });
+          post("/plugins/mcp-gate/remove", { server: name }).then(function () {
+            setNote({ kind: "ok", text: t("removedLiveNote") });
           })
         );
       }
@@ -811,16 +910,12 @@ window.__ModuleLoader__.load({
         if (server.projectEnabled === true && !server.globalEnabled) parts.push(t("projectEnabledOnly"));
         if (server.connStatus === "error" && server.connError) parts.push("⚠ " + String(server.connError).slice(0, 160));
         else if (server.connStatus === "connected") parts.push(t("connConnected") + " · " + server.connTools + " " + t("tools"));
-        else if (server.connStatus === "external") parts.push(t("connExternal"));
         else if (server.connectorMissing) parts.push(t("connMissing"));
         else if (server.connStatus === "disconnected") parts.push(t("connDisconnected"));
         return parts.join(" · ");
       }
 
       function connBadge(server) {
-        if (server.legacy) {
-          return React.createElement("span", { className: "mcp-badge", "data-legacy": "true", title: t("migrateBar") }, t("legacyBadge"));
-        }
         if (server.managed && server.connStatus === "connected") {
           return React.createElement("span", { className: "mcp-badge", "data-live": "true" }, t("managedBadge"));
         }
@@ -1079,18 +1174,6 @@ window.__ModuleLoader__.load({
           })
         ),
         error ? React.createElement("p", { className: "mcp-error" }, error) : null,
-        servers.some(function (s) { return s.legacy; })
-          ? React.createElement(
-              "div",
-              { className: "mcp-note-bar", "data-kind": "warn" },
-              React.createElement("span", null, t("migrateBar")),
-              React.createElement(
-                "button",
-                { type: "button", className: "mcp-add-btn", onClick: migrateLegacy },
-                t("migrateBtn")
-              )
-            )
-          : null,
         visible.length === 0
           ? React.createElement("p", { className: "mcp-empty" }, t("empty"))
           : React.createElement(
@@ -1121,6 +1204,7 @@ window.__ModuleLoader__.load({
                   ? servers.map(function (s) { return s.name; })
                   : null,
                 onSubmit: saveServer,
+                onImport: importServers,
                 onClose: function () { setModal(null); },
               })
             )
