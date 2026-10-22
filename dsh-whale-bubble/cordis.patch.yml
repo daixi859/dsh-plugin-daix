@@ -1,0 +1,7 @@
+# dsh-whale-bubble bundle patch: 把 whale-bubble 插件行插入 host 组合。
+# 由 `dsh plugin --profile <name> add dsh-whale-bubble` 的 reconcile 识别
+# （package.json 声明 dsh.bundle），并加入 profile 的 dsh.profile.bundles 层。
+
+- insert:
+    - id: whale-bubble
+      name: dsh-whale-bubble
