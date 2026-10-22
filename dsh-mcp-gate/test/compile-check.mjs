@@ -38,7 +38,7 @@ console.log("=== compiled parameters ===");
 console.log(JSON.stringify(def.parameters, null, 2));
 console.log("=== validate({}) ===");
 try {
-  def.execute({}, {});
+  await def.execute({}, {}); // execute 是 async：ToolArgsError 走 rejection，必须 await 才能捕获
 } catch (e) {
   console.log("threw:", e.message);
 }

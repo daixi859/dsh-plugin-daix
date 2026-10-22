@@ -1,6 +1,7 @@
 // 配置/导入逻辑单测：从 lib/index.js 提取纯函数（大括号配对扫描），在临时模块里跑断言。
 // 覆盖：normalizeServerInput 校验、parseMcpServersJson（mcpServers 包裹/直接 map/错误路径）、
-//       fromImportedEntry 字段映射、connectorView（${ENV} 原样回填）。
+//       fromImportedEntry 字段映射、connectorView（${ENV} 原样回填）、
+//       pathKey/sanitizeProjectsStore（集中项目库）、wantsConnection（项目覆盖优先建连）。
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,10 +13,12 @@ const src = readFileSync(join(here, "..", "lib", "index.js"), "utf8");
 const NAMES = [
   "normalizeServerInput", "sanitizeStringMap", "connectorView",
   "parseMcpServersJson", "fromImportedEntry",
+  "pathKey", "sanitizeProject", "sanitizeProjectsStore", "wantsConnection",
 ];
 
 function extract(name) {
-  const marker = `  function ${name}(`;
+  // 无前缀匹配：顶层函数（\nfunction x(）与 apply 内部函数（  function x(）都命中。
+  const marker = `function ${name}(`;
   const start = src.indexOf(marker);
   if (start < 0) throw new Error(`function ${name} not found`);
   let depth = 0;
@@ -42,7 +45,7 @@ function globalEntry(server) {
   return { enabled: true, ...entry };
 }
 ${NAMES.map(extract).join("\n\n")}
-export { normalizeServerInput, sanitizeStringMap, connectorView, parseMcpServersJson, fromImportedEntry, globalConfig };
+export { normalizeServerInput, sanitizeStringMap, connectorView, parseMcpServersJson, fromImportedEntry, pathKey, sanitizeProject, sanitizeProjectsStore, wantsConnection, globalConfig };
 `;
 writeFileSync(modPath, code, "utf8");
 
@@ -128,6 +131,60 @@ function check(label, cond) {
   // sse 警告位
   const sse = m.fromImportedEntry("legacy-sse", { type: "sse", url: "http://h/sse" });
   check("import: sse warning flagged", sse.sseWarning === true && sse.transport === "streamable-http");
+}
+
+// ── 4. pathKey + sanitizeProjectsStore：集中项目库 ─────────────────────────
+{
+  check("pathKey: case-insensitive", m.pathKey("D:\\WSL\\X") === m.pathKey("d:\\wsl\\x"));
+  check("pathKey: slashes normalized", m.pathKey("D:/wsl/x") === m.pathKey("D:\\wsl\\x"));
+  check("pathKey: trailing bslash stripped", m.pathKey("D:\\wsl\\x\\") === m.pathKey("D:\\wsl\\x"));
+  check("pathKey: trailing slash stripped", m.pathKey("D:/wsl/x/") === m.pathKey("D:\\wsl\\x"));
+
+  const store = m.sanitizeProjectsStore({
+    projects: {
+      "d:\\wsl\\x": {
+        path: "D:\\wsl\\x",
+        servers: { crm: { enabled: true }, junk: "x", ghost: { enabled: "yes" } },
+      },
+      "d:\\wsl\\y": { servers: { crm: { enabled: false } } },
+      "d:\\wsl\\z": null,
+      "": { servers: {} },
+    },
+  });
+  const px = store.projects["d:\\wsl\\x"];
+  check("store: crm enabled kept", !!px && !!px.servers.crm && px.servers.crm.enabled === true);
+  check("store: junk/ghost dropped", !("junk" in px.servers) && !("ghost" in px.servers));
+  const py = store.projects["d:\\wsl\\y"];
+  check("store: path falls back to key", !!py && py.path === "d:\\wsl\\y" && py.servers.crm.enabled === false);
+  check("store: null entry dropped", !("d:\\wsl\\z" in store.projects));
+  check("store: empty key dropped", !("" in store.projects));
+  check("store: garbage → empty", Object.keys(m.sanitizeProjectsStore(null).projects).length === 0);
+  check("store: no projects field → empty", Object.keys(m.sanitizeProjectsStore({}).projects).length === 0);
+
+  check("sanitizeProject: enabled kept",
+    m.sanitizeProject({ servers: { a: { enabled: false } } }).servers.a.enabled === false);
+  check("sanitizeProject: junk dropped",
+    JSON.stringify(m.sanitizeProject({ servers: { b: { exposure: "direct" } } })) === '{"servers":{}}');
+}
+
+// ── 5. wantsConnection：项目覆盖优先建连 ───────────────────────────────────
+{
+  m.globalConfig.mcpEnabled = true;
+  m.globalConfig.servers = {
+    crm: { enabled: false, connector: { transport: "stdio", command: "node" } },
+    web: { enabled: true, connector: { transport: "streamable-http", url: "https://h/mcp" } },
+    noconn: { enabled: true },
+  };
+  const projOn = new Set(["crm"]);
+  const projOff = new Set();
+  check("conn: global on connects", m.wantsConnection("web", projOff) === true);
+  check("conn: global off + no project → no", m.wantsConnection("crm", projOff) === false);
+  check("conn: global off + project on → yes", m.wantsConnection("crm", projOn) === true);
+  check("conn: no connector → no", m.wantsConnection("noconn", projOn) === false);
+  m.globalConfig.mcpEnabled = false;
+  check("conn: master off → no", m.wantsConnection("web", projOn) === false);
+  m.globalConfig.mcpEnabled = true;
+  check("conn: missing overrides tolerated", m.wantsConnection("crm", undefined) === false);
 }
 
 rmSync(tmp, { recursive: true, force: true });

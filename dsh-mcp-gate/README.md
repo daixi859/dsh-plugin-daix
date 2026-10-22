@@ -6,11 +6,11 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 
 渐进披露三层（对应 MCP 官方 client 最佳实践的 Catalog → Inspect → Execute）：
 
-1. **目录层**：`systemPrompt.section("mcp-gate:servers", order 900)` 每服务器一行 `- name (N tools): summary`；summary 优先取配置的 `description`（add/update 表单可填，≤250 字），其次服务器 `initialize.instructions` 首行，兜底工具名聚合。文本变化才重注册（幂等短路）。
+1. **目录层**：`systemPrompt.section("mcp-gate:servers", order 900)` 每服务器一行 `- name (N tools): summary`；summary 优先取配置的 `description`（add/update 表单可填，≤250 字），其次服务器 `initialize.instructions` 首行，兜底工具名聚合。全局 fallback 段 `text` 为 provider 形式（每次组装求值，一次性注册）；agent scope 注册同名 scoped section（`onAgentCreated`）遮蔽全局段，读 `state.projectServers` 内存缓存——目录精确反映本项目覆盖（`enabled_eff = project ?? global`，任一层关掉即不列出；全局禁用 + 本项目启用 → 目录可见并标注 "enabled for this project only"）。时序：目录数据由 recompute 在连接对账后填充，agent 创建后的首轮组装可能早于它（headless 单轮任务首轮目录为空，第二个 step 起正确；GUI 正常使用首轮即正确）。
 2. **检索层**：`mcp_search`（BM25 k1=1.2 b=0.75 索引：工具名+拆名+描述+参数 schema 文本+`[server name: desc]` 语义增强；只拼描述文本、工具名聚合不进索引防 BM25 污染）。
 3. **执行层**：命中的工具下轮起可调用（见下）。
 
-- 每个 MCP 工具（`mcp__<server>__<tool>`）默认不出现在模型工具列表：插件对每个 agent 的 ctx 调 `tools.restrict({ deny })`。
+- 每个 MCP 工具（`mcp__<server>__<tool>`）默认不出现在模型工具列表：插件对每个 agent 的 ctx 调 `tools.restrict({ deny })`。**同步先收后放**：子代理首轮函数列表装配不等本插件异步精化（防抖 + cwd 解析），`onAgentCreated` 同步段先 deny 全部 mcp 工具（项目覆盖未知的安全默认），随后 recompute 按项目覆盖换精确名单（相同则短路不重注）。代价是子代理首轮看不到任何 mcp 工具，第二步起精确。
 - 模型 search 命中 → 名字进 unlocked → restrict 名单收缩 → 下轮 schema 出现该工具。
 - `tools/change` 驱动重算；deny 名单幂等短路（排序比较相同则不动）防自激循环。
 
@@ -20,23 +20,27 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 
 - 连接池：`pool: Map<name, {conn, cfgKey}>`，`cfgKey = JSON.stringify(connector)`；`syncConnections()` 串行化对账（断开多余/重建变化/新建缺失），任何配置落盘后调用。
 - **连接器工具注册到全局 ctx**（`syncGlobalTools`，`globalTools` 簿记）：agent scope 注册的工具不进 `schemas()` 快照、restrict 也折叠不了（restrict 只作用于继承面）——注册到 agent scope 的版本症状是"模型能直接调用但搜索找不到、也无法折叠"。
-- 连接条件：master 开 && 全局 enabled（项目覆盖只影响工具可见性，不影响连接）。
+- 连接条件：master 开 &&（全局 enabled || 任一项目覆盖为 enabled）。项目覆盖优先：全局禁用 + 本项目启用 → 连接照建（工具全局注册，可见性按项目收敛）；项目禁用不断开（只收紧本项目可见性）。
 - 同名工具撞车标记 `mcpRegistered` 防反复重试；`${VAR}` 引用在进程环境取值注入（密钥不明文落盘）。
 
 ## 三层配置
 
-生效规则：`enabled_eff = mcpEnabled && (project.enabled ?? global.enabled ?? true)`
+生效规则（项目优先，不管全局配置如何以项目为准）：
+
+- 目录/工具可见性：`enabled_eff = project.enabled ?? global.enabled ?? true`（总开关 mcpEnabled 为 false 时全部折叠且 mcp_search 提示禁用）。
+- 连接决策：`want = mcpEnabled && connector && (global.enabled !== false || 任一项目覆盖 enabled)`。
 
 1. **总开关** `~/.dsh/plugins/mcp-gate/config.json` 的 `"mcpEnabled"`（false 时全部 MCP 折叠且 mcp_search 提示已禁用）。
 2. **全局服务器级** 同文件 `"servers": { "<name>": { "enabled": bool, "description": "一句话描述（目录段+检索增强）", "exposure": "direct|deferred|hidden", "toolExposure": { "<raw>": "direct|hidden" } } }`。`direct` 不折叠；`deferred` 折叠但可检索（默认）；`hidden` 折叠且不可检索。
-3. **项目级覆盖** `<工作区>/.dsh/mcp-gate.json` 的 `"servers": { "<name>": { "enabled": true|false } }`，只写覆盖项。
+3. **项目级覆盖** 统一存集中库 `~/.dsh/plugins/mcp-gate/projects.json`（不放项目内）：`{ "projects": { "<pathKey>": { "path": "<原始 cwd>", "servers": { "<name>": { "enabled": true|false } } } } }`，pathKey 为 Windows 大小写/分隔符不敏感的规范化键（去尾部分隔符）。`POST /project` 写集中库并按 `cwd` 匹配本项目；旧项目内 `<工作区>/.dsh/mcp-gate.json` 仍只读兼容（查无集中库条目时回退），首次写集中库时并入其覆盖项。
 
 配置页：Web GUI → 设置 → MCP 网关（settings.section slot）。行卡片支持全局开关直切、三态组（继承/项目开/项目关）、per-tool exposure 循环切换。
 
 ## HTTP 接口（webServer，/plugins/mcp-gate/*）
 
-- `GET /state?cwd=<工作区>`：master + 每服务器视图（live 工具 ∪ 全局配置 ∪ 项目覆盖，含 effective 状态与 per-tool 明细；`connector` 字段为编辑面板预填视图）。
-- `POST /master` `{enabled}`；`POST /global` `{server, enabled?, exposure?, tool?, toolExposure?}`（`tool` 路径 null 删覆盖）；`POST /project` `{cwd, server, enabled: true|false|null}`。均落盘后全 agent 重算。
+- `GET /state?cwd=<工作区>`：master + 每服务器视图（live 工具 ∪ 全局配置 ∪ 项目覆盖，含 effective 状态与 per-tool 明细；`connector` 字段为编辑面板预填视图）。`globalEnabled`=全局配置、`projectEnabled`=项目覆盖、`enabled`=最终生效。
+- `GET /agents`：诊断端点——每个活 agent 的 `cwd / projectServers / unlocked / denyCount / restrictActive / indexEntries`（排查 GUI 侧生效状态）。
+- `POST /master` `{enabled}`；`POST /global` `{server, enabled?, exposure?, tool?, toolExposure?}`（`tool` 路径 null 删覆盖；enabled 切换会触发连接对账——全局禁用但有项目覆盖启用时不断开）；`POST /project` `{cwd, server, enabled: true|false|null}`（写集中库 `~/.dsh/plugins/mcp-gate/projects.json`，pathKey 索引，首次物化并入旧项目内文件覆盖；enabled=null 删覆盖项）。均落盘后全 agent 重算。
 - `POST /add` `{name, description?, transport, command?, args?, env?, cwd?, url?, headers?}`：写入 config.json `servers[name].connector`（description 一并存档）并即时连接，返回 `applied: "live", status, tools`；重名（live ∪ 全局）拒绝。
 - `POST /update` `{name, description?, ...同上}`：替换 connector 与 description（enabled/exposure/toolExposure 保留）→ cfgKey 变化自动断开重连（`applied: "live"`）；transport 切换时清理反侧字段。
 - `POST /remove` `{server}`：断开 + 删配置，即时生效。
@@ -51,7 +55,8 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 
 ## agent 侧时序要点（踩坑记录）
 
-- `agent/created` 串行监听内**同步先** `register(mcp_search)`，再做任何 await——否则首个 prompt 组装看不到搜索工具。
+- `agent/created` 串行监听内**同步先** `register(mcp_search)` + **同步先收**（restrict deny-all mcp 工具，见上），再做任何 await——否则首个 prompt 组装看不到搜索工具、且子代理首轮列表全量泄漏（子代理首轮 assemble 跑在异步 restrict 之前）。
+- **cd 跟随**：目录/覆盖绑定 per-agent 的 `state.cwd`（首次解析后固化）。宿主无插件可订阅的目录变化总线事件（`working-directory/change` 是 session 事件流条目），`wd.get` 在部分会话形态恒抛错。**主路径 = `agent/pre-step` 异步 waterfall 钩子**（skill 机制同款，tool-skill 每步 `workingDirectory.ensure` 即此形态）：每步实时 `await wd.ensure(agent)`，与 `state.cwd` 漂移则清 `cwd/unlocked` 并当场 `await recompute` → **本步 assemble 即按新项目生效，零下一拍**。兜底：`mcp_search.execute` 内同款检测（搜索当场用新索引）。GUI 切工作区/会话恢复/subagent 均为新 agent，机制天然正确无需此路径。
 - `ToolDefinition` 必须带 `output: { schema, render }`（否则注册被拒）；`output.schema` 的 properties 内层不允许 `required`。
 - 直接 `register` 裸对象时 `parameters` 不会被编译：必须写 object-rooted JSON Schema（`{type:"object", properties, required}`），不能用 defineTool 的 per-key 简写。
 - 工作目录：`workingDirectory.get(agent)` 会抛异常（要 Session 对象）；用 `await wd.ensure(agent)`。
@@ -64,12 +69,12 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 
 ## 调试
 
-环境变量 `MCP_GATE_DEBUG=1` → 日志写 `~/.dsh/plugins/mcp-gate/debug.log`（apply / agent/created / register / recompute / restrict deny 名单 / cwd 解析重试）。
+环境变量 `MCP_GATE_DEBUG=1` → 日志写 `~/.dsh/plugins/mcp-gate/debug.log`（apply / agent/created / pre-restrict deny-all / register / recompute / restrict deny 名单 / cwd 解析重试 / cwd drift）。
 
 ## 测试
 
 - `node test/connector-unit.mjs`：内置连接器单测（17 项）——RPC 纯函数（ndjson/SSE/错误提取）、stdio 真连 mini-mcp-server、node:http 假 streamable-http 服务器（SSE+session 头）、死端口与超时路径。
-- `node test/config-unit.mjs`：配置与导入逻辑单测（25 项）。从 `lib/index.js` 大括号配对提取纯函数，覆盖 normalizeServerInput 校验、connectorView 编辑预填（`${ENV}` 原样回填）、parseMcpServersJson/fromImportedEntry 的映射与错误路径。
+- `node test/config-unit.mjs`：配置与导入逻辑单测（41 项）。从 `lib/index.js` 大括号配对提取纯函数，覆盖 normalizeServerInput 校验、connectorView 编辑预填（`${ENV}` 原样回填）、parseMcpServersJson/fromImportedEntry 的映射与错误路径、pathKey 规范化与 sanitizeProjectsStore 集中库清洗、wantsConnection 项目覆盖优先建连决策。
 - E2E 见下节；`test/mini-mcp-server.js`（echo/time_now/add 三工具）为验证 fixture。
 
 ## E2E 复跑（headless）

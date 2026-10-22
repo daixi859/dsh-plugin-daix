@@ -7,6 +7,10 @@
 //   POST /plugins/whale-bubble/refresh      { id? }
 //   POST /plugins/whale-bubble/set-key      { id, value }
 //   POST /plugins/whale-bubble/set-visible  { visible }
+//   POST /plugins/whale-bubble/set-session  { id }   ← 当前浏览会话上报
+// 工作区跟随会话：conversation.composer.dock（session scope）挂隐形哨兵
+// SessionSentinel，从 slot props 的 sessionId 拿当前浏览会话，变化时 POST
+// /set-session 通知 host 重算工作区，并经模块级监听器即时更新气泡卡片。
 // UI（挂 shell.overlay，整页右下角 fixed）：
 //   - 收起态：38px 圆形半透明鲸鱼图标（hover 实体化）；点击图标 = 强制刷新（转圈）
 //   - hover 卡片：工作区名/目录 + Z.ai 5h 窗口（百分比+重置时间）+ DeepSeek 余额；
@@ -105,6 +109,15 @@ window.__ModuleLoader__.load({
         .then(unwrap);
     }
 
+    // 会话上报 → 气泡卡片即时刷新的桥：哨兵组件 POST /set-session 拿到最新
+    // snapshot 后广播给所有已注册的 setState（WhaleBubble 挂载时注册）。
+    var stateListeners = [];
+    function notifyState(s) {
+      for (var i = 0; i < stateListeners.length; i++) {
+        try { stateListeners[i](s); } catch (e) {}
+      }
+    }
+
     // ── 工具 ────────────────────────────────────────────────────────────────
     function p2(n) { return String(n).padStart(2, "0"); }
 
@@ -134,6 +147,23 @@ window.__ModuleLoader__.load({
     function WhaleIcon() {
       return React.createElement("svg", { viewBox: WHALE_VIEWBOX, fill: "currentColor", "aria-hidden": true },
         React.createElement("path", { d: WHALE_LOGO_PATH }));
+    }
+
+    // ── 会话哨兵（conversation.composer.dock，session scope）────────────────
+    // 隐形组件：slot props 携带当前浏览会话的 sessionId（渲染器 standard kit）。
+    // 会话切换时渲染器按 sessionGenerationKey 重挂本组件 → effect 重跑 → 上报。
+    // 无会话时 strict session slot 不渲染，host 保留上次值即可。
+    function SessionSentinel(props) {
+      var sessionId = props.sessionId;
+      React.useEffect(function () {
+        if (!sessionId) return undefined;
+        var cancelled = false;
+        apiPost("/plugins/whale-bubble/set-session", { id: sessionId })
+          .then(function (s) { if (!cancelled) notifyState(s); })
+          .catch(function () {});
+        return function () { cancelled = true; };
+      }, [sessionId]);
+      return null;
     }
 
     // ── 悬浮卡片 ────────────────────────────────────────────────────────────
@@ -296,6 +326,15 @@ window.__ModuleLoader__.load({
 
       React.useEffect(function () {
         load();
+        stateListeners.push(setState);
+        return function () {
+          var idx = stateListeners.indexOf(setState);
+          if (idx >= 0) stateListeners.splice(idx, 1);
+        };
+      }, []);
+
+      // 15 秒轮询（ctx.interval 返回 dispose，作为 effect cleanup 释放）
+      React.useEffect(function () {
         return ctx.interval(load, 15000);
       }, []);
 
@@ -355,6 +394,13 @@ window.__ModuleLoader__.load({
           return slots.register(
             { name: "shell.overlay", id: "whale-bubble", order: 90, label: "鲸鱼气泡" },
             function () { return React.createElement(WhaleBubble, { ctx: ctx }); }
+          );
+        });
+        // 会话哨兵：挂 session scope 的 composer dock，上报当前浏览会话
+        slots.inject("conversation.composer.dock", function () {
+          return slots.register(
+            { name: "conversation.composer.dock", id: "whale-bubble-session-reporter", order: 999, label: "会话上报" },
+            function (props) { return React.createElement(SessionSentinel, { sessionId: props && props.sessionId }); }
           );
         });
       }

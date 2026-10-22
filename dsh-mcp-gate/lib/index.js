@@ -17,7 +17,12 @@
 // 生效规则：enabled_eff = master && (project.enabled ?? global.enabled ?? true)
 //   master   ：全局总开关（config.mcpEnabled，硬开关；false 时连接器全部断开）
 //   global   ：~/.dsh/plugins/mcp-gate/config.json → servers[name].enabled/exposure/toolExposure/connector
-//   project  ：<工作区>/.dsh/mcp-gate.json → servers[name].enabled（只写覆盖）
+//   project  ：~/.dsh/plugins/mcp-gate/projects.json（集中项目库，pathKey(cwd) 索引，统一管理；
+//              旧 <工作区>/.dsh/mcp-gate.json 只读回退兼容，写入一律走集中库）
+//
+// 项目覆盖优先于全局（v0.5）：全局禁用 + 本项目启用 → 本项目可用，全链路生效：
+//   连接（wantsConnection 看任一项目覆盖为 true）、目录（scoped section 遮蔽全局段，
+//   per-agent 视图）、可见性/检索（effectiveEnabled 项目优先——原有语义）。
 //
 // 机制（practices.md 对齐）：per-agent 在 `agent/created`（串行）里
 //   - agent.ctx.tools.register 注册 scope 级 mcp_search 工具 + 已连接服务器的全部工具
@@ -72,9 +77,14 @@ function projectConfigPath(cwd) {
   return join(cwd, ".dsh", "mcp-gate.json");
 }
 
-/** 路径键：Windows 大小写/分隔符不敏感的匹配键。 */
+/** 集中项目库：所有项目的覆盖项统一存这里，不散落各项目目录。 */
+function projectsStorePath() {
+  return join(dshHome(), "plugins", "mcp-gate", "projects.json");
+}
+
+/** 路径键：Windows 大小写/分隔符不敏感的匹配键；去尾部分隔符。 */
 function pathKey(p) {
-  return String(p || "").replace(/\//g, "\\").toLowerCase();
+  return String(p || "").replace(/\//g, "\\").replace(/[\\]+$/, "").toLowerCase();
 }
 
 const DEFAULT_GLOBAL = () => ({ mcpEnabled: true, servers: {} });
@@ -150,6 +160,26 @@ function sanitizeProject(raw) {
         out.servers[server] = { enabled: entry.enabled };
       }
     }
+  }
+  return out;
+}
+
+/**
+ * 集中项目库白名单清洗。形状：
+ * { projects: { [pathKey]: { path: <原始 cwd>, servers: { [name]: { enabled } } } } }
+ * 非法条目剔除；path 缺失时回退用键本身（pathKey 形态）。
+ */
+function sanitizeProjectsStore(raw) {
+  const out = { projects: {} };
+  if (!raw || typeof raw !== "object" || !raw.projects || typeof raw.projects !== "object") {
+    return out;
+  }
+  for (const [key, entry] of Object.entries(raw.projects)) {
+    if (typeof key !== "string" || key.length === 0) continue;
+    if (!entry || typeof entry !== "object") continue;
+    const servers = sanitizeProject(entry).servers;
+    const path = typeof entry.path === "string" && entry.path.trim() ? entry.path.trim() : key;
+    out.projects[key] = { path, servers };
   }
   return out;
 }
@@ -283,7 +313,25 @@ export function apply(ctx) {
 
   async function loadProjectOverrides(cwd) {
     if (!cwd) return { servers: {} };
+    // 集中库优先：有该项目的条目就用它（唯一写入口，projects.json）。
+    const key = pathKey(cwd);
+    const store = sanitizeProjectsStore(await readJson(projectsStorePath(), { projects: {} }));
+    const entry = store.projects[key];
+    if (entry) return { servers: entry.servers };
+    // 回退：旧版项目内文件（只读兼容，不回写；首次在 UI 里改设置时才物化进集中库）。
     return sanitizeProject(await readJson(projectConfigPath(cwd), { servers: {} }));
+  }
+
+  /** 任一项目把该 server 覆盖为 enabled===true 的集合（连接决策用；连接是全局资源）。 */
+  async function loadAnyProjectEnabled() {
+    const store = sanitizeProjectsStore(await readJson(projectsStorePath(), { projects: {} }));
+    const set = new Set();
+    for (const entry of Object.values(store.projects)) {
+      for (const [server, cfg] of Object.entries(entry.servers)) {
+        if (cfg.enabled === true) set.add(server);
+      }
+    }
+    return set;
   }
 
   // ── 生效计算 ──
@@ -447,7 +495,7 @@ export function apply(ctx) {
   }
 
   function recomputeAll() {
-    refreshServersSection();
+    registerServersSection();
     for (const state of states.values()) schedule(state);
   }
 
@@ -455,7 +503,6 @@ export function apply(ctx) {
 
   const SECTION_NAME = "mcp-gate:servers";
   let sectionDisposer = null;
-  let lastSectionText = null;
 
   /** 该 server 的全局可见工具名列表：连接器池优先，否则从全局 schema 快照过滤。 */
   function globalServerToolNames(server) {
@@ -497,17 +544,36 @@ export function apply(ctx) {
     return ` [server ${name}]`;
   }
 
-  function buildServersSectionText() {
+  /**
+   * server 目录文本。projectServers 传该 agent 的项目覆盖（scoped section 的 provider
+   * 每次组装求值，读内存缓存 state.projectServers）；不传/为空 = 全局视图。
+   * 全局禁用 + 本项目启用 → 也列出（标注 project-only），模型才知道本项目可检索；
+   * 项目覆盖 enabled=false → 不列出（无论全局开关，effective = project ?? global）。
+   */
+  function buildServersSectionText(projectServers) {
     if (globalConfig.mcpEnabled === false) return "";
+    const overrides = projectServers && typeof projectServers === "object" ? projectServers : {};
     const lines = [];
     for (const name of Object.keys(globalConfig.servers).sort()) {
       const entry = globalConfig.servers[name];
-      if (!entry || entry.enabled === false) continue;
+      if (!entry) continue;
+      const projectEnabled =
+        overrides[name] && typeof overrides[name].enabled === "boolean"
+          ? overrides[name].enabled
+          : null;
+      // 目录 = 本 agent 可检索清单：effective = project ?? global ?? true，
+      // 任一层关掉即不列出（全局开 + 项目关也关——列了搜不到反而误导模型）。
+      const effectiveEnabled = projectEnabled !== null ? projectEnabled : entry.enabled !== false;
+      if (!effectiveEnabled) continue;
+      const projectOnly = entry.enabled === false && projectEnabled === true;
       if ((entry.exposure || DEFAULT_EXPOSURE) === "hidden") continue;
       const count = globalServerToolNames(name).length;
       if (count === 0) continue;
       const summary = serverSummaryOf(name);
-      lines.push(`- ${name} (${count} tool${count === 1 ? "" : "s"})${summary ? `: ${summary}` : ""}`);
+      const tag = projectOnly ? " — enabled for this project only" : "";
+      lines.push(
+        `- ${name} (${count} tool${count === 1 ? "" : "s"})${summary ? `: ${summary}` : ""}${tag}`,
+      );
     }
     if (lines.length === 0) return "";
     return (
@@ -517,19 +583,28 @@ export function apply(ctx) {
     );
   }
 
-  /** 文本变化才重注册（幂等；section 变化低频，cache 代价可接受）。 */
-  function refreshServersSection() {
-    const text = buildServersSectionText();
-    if (text === lastSectionText) return;
-    lastSectionText = text;
-    if (sectionDisposer) {
-      try { sectionDisposer(); } catch {}
-      sectionDisposer = null;
-    }
-    if (!text) return;
+  /**
+   * 全局 fallback 段：text 是 provider 形式（每次组装重算，无状态），一次性注册，
+   * 无需再幂等重注册；agent scope 的同名段会遮蔽它（见 onAgentCreated）。
+   */
+  function registerServersSection() {
+    if (sectionDisposer) return;
     try {
-      sectionDisposer = ctx.systemPrompt.section({ name: SECTION_NAME, order: 900, text });
-      debugLog(`prompt section updated: ${text.split("\n").length - 2} server(s)`);
+      sectionDisposer = ctx.systemPrompt.section({
+        name: SECTION_NAME,
+        order: 900,
+        text: (asmCtx) => {
+          try {
+            const keys = asmCtx && typeof asmCtx === "object" ? Object.keys(asmCtx) : [];
+            debugLog(
+              `assemble-ctx keys=[${keys.join(",")}] agentId=${asmCtx?.agent?.id ?? "?"} ` +
+                `agentCwdProp=${JSON.stringify(asmCtx?.agent?.cwd ?? null)}`,
+            );
+          } catch {}
+          return buildServersSectionText();
+        },
+      });
+      debugLog("prompt section registered (global fallback)");
     } catch (error) {
       sectionDisposer = null;
       debugLog(`prompt section failed: ${error && error.message}`);
@@ -546,12 +621,17 @@ export function apply(ctx) {
     return JSON.stringify(cfg);
   }
 
-  /** master && 全局 enabled（项目覆盖不参与连接决策，只影响可见性）。 */
-  function wantsConnection(name) {
+  /**
+   * master && 配了 connector &&（全局未禁用 || 任一项目覆盖为启用）。
+   * 项目覆盖优先：全局禁用 + 某项目启用 → 连接照建（工具全局注册，可见性按项目收敛）；
+   * 反之项目禁用不断开连接（只收紧本项目的可见性）。
+   */
+  function wantsConnection(name, anyProjectEnabled) {
     if (globalConfig.mcpEnabled === false) return false;
     const entry = globalConfig.servers[name];
     if (!entry || !entry.connector) return false;
-    return entry.enabled !== false;
+    if (entry.enabled !== false) return true;
+    return anyProjectEnabled instanceof Set && anyProjectEnabled.has(name);
   }
 
   /** 使连接池收敛到配置期望；对每个活 agent 同步工具集；触发重算。 */
@@ -559,9 +639,12 @@ export function apply(ctx) {
     if (syncing) return syncing;
     syncing = (async () => {
       try {
+        const anyProjectEnabled = await loadAnyProjectEnabled();
         const want = new Map();
         for (const name of Object.keys(globalConfig.servers)) {
-          if (wantsConnection(name)) want.set(name, globalConfig.servers[name].connector);
+          if (wantsConnection(name, anyProjectEnabled)) {
+            want.set(name, globalConfig.servers[name].connector);
+          }
         }
         for (const [name, p] of [...pool]) {
           if (!want.has(name) || cfgKeyOf(want.get(name)) !== p.cfgKey) {
@@ -729,6 +812,24 @@ export function apply(ctx) {
             count: 0,
           };
         }
+        // cd 跟随（主路径）：execute 是 async，可可靠地 await wd.ensure 拿实时
+        // 目录（wd.get 在部分会话形态恒抛错，provider 同步探测只是兜底）。检测
+        // 到漂移则清空 cwd/unlocked 并当场 await recompute——重解析、重载
+        // projects.json、重建索引、更新 restrict 全部完成后再搜索，cd 后第一
+        // 次搜索即精确，无下一拍。
+        try {
+          const wd = ctx.get("workingDirectory");
+          if (wd && typeof wd.ensure === "function") {
+            const real = await wd.ensure(state.agent);
+            if (typeof real === "string" && real.length > 0 && state.cwd && pathKey(real) !== pathKey(state.cwd)) {
+              debugLog(`cwd drift (search) agent=${state.agent.id} old=${state.cwd} new=${real} → recompute`);
+              state.cwd = null;
+              state.cwdRetries = 0;
+              state.unlocked.clear();
+              await recompute(state);
+            }
+          }
+        } catch {}
         const query = String(args && args.query ? args.query : "").trim();
         if (query.length === 0) {
           return { text: "Empty query. Provide keywords for the capability you need.", count: 0 };
@@ -786,6 +887,28 @@ export function apply(ctx) {
     };
     states.set(agent.id, state);
 
+    // 同步先收后放：子代理首轮函数列表装配（systemPrompt.assemble → wireSchemas
+    // → view）不会等本插件的异步精化（30ms 防抖 + cwd 异步解析 + 覆盖读取），
+    // 窗口内 restrict 未注册 → 首轮列表全量泄漏。在同步段（任何 await 之前）先
+    // deny 全部 mcp__ 工具（项目覆盖未知时的安全默认）；随后 recompute 按项目
+    // 覆盖算出精确 deny 名单，与 lastDenyKey 不同则 dispose + 重注（相同则短路，
+    // 避免冗余抖动）。代价：子代理首轮看不到任何 mcp 工具（含项目启用的），
+    // 第二步起精确——比全量泄漏正确。
+    try {
+      const toolsSvc = ctx.get("tools");
+      const allSchemas = typeof toolsSvc?.schemas === "function" ? toolsSvc.schemas() : [];
+      const denyAll = allSchemas
+        .map((tool) => tool && tool.name)
+        .filter((name) => typeof name === "string" && name.startsWith(MCP_PREFIX));
+      if (denyAll.length > 0) {
+        state.restrictDisposer = agentCtx.tools.restrict({ deny: denyAll });
+        state.lastDenyKey = denyAll.slice().sort().join("\n");
+        debugLog(`pre-restrict agent=${agent.id} deny-all mcp tools=${denyAll.length}`);
+      }
+    } catch (error) {
+      debugLog(`pre-restrict agent=${agent.id} failed: ${error && error.message}`);
+    }
+
     // 同步先行：register 必须发生在任何 await 之前，否则首个 prompt 组装
     // （串行 await agent/created）看不到工具。cwd/项目覆盖懒解析，由 recompute 补上。
     try {
@@ -796,6 +919,52 @@ export function apply(ctx) {
     }
     // 连接器工具全局注册（syncGlobalTools，apply 时启动连接后对账）；
     // mcp_search 是 per-agent scope 工具（绑定各自 state）。
+
+    // per-agent 目录段：同名 scoped section 遮蔽全局段；PromptSection.text 是
+    // provider 形式（每次组装求值），读 state.projectServers 内存缓存 → 目录
+    // 精确反映本项目覆盖（全局禁用 + 本项目启用 → 目录可见）。
+    try {
+      if (agentCtx.systemPrompt && typeof agentCtx.systemPrompt.section === "function") {
+        agentCtx.systemPrompt.section({
+          name: SECTION_NAME,
+          order: 900,
+          text: (asmCtx) => {
+            try {
+              const keys = asmCtx && typeof asmCtx === "object" ? Object.keys(asmCtx) : [];
+              debugLog(
+                `scoped assemble-ctx agent=${agent.id} keys=[${keys.join(",")}] ` +
+                  `ctxAgentId=${asmCtx?.agent?.id ?? "?"} stateCwd=${state.cwd ?? "?"} ` +
+                  `agentCwdProp=${JSON.stringify(asmCtx?.agent?.cwd ?? null)}`,
+              );
+            } catch {}
+            // cd 跟随：每次组装同步探测实时目录（wd.get，抛错即跳过），与
+            // state.cwd 漂移（pathKey 比较，大小写/分隔符不敏感）则置空 cwd
+            // 并重排 recompute——下一轮组装起按新目录的覆盖生效（重解析、
+            // 重载 projects.json、重算 deny、刷新目录段缓存）。本轮仍按旧
+            // 缓存输出（下一拍语义，见 grill 定稿）。
+            try {
+              const wd = ctx.get("workingDirectory");
+              if (wd && typeof wd.get === "function" && state.cwd) {
+                const real = wd.get(agent);
+                if (typeof real === "string" && real.length > 0 && pathKey(real) !== pathKey(state.cwd)) {
+                  debugLog(`cwd drift agent=${agent.id} old=${state.cwd} new=${real} → reschedule`);
+                  state.cwd = null;
+                  state.cwdRetries = 0;
+                  if (state.cwdTimer) {
+                    state.cwdTimer();
+                    state.cwdTimer = null;
+                  }
+                  schedule(state);
+                }
+              }
+            } catch {}
+            return buildServersSectionText(state.projectServers);
+          },
+        });
+      }
+    } catch (error) {
+      debugLog(`agent section failed: ${error && error.message}`);
+    }
 
     // 双 owner：运行中重建 restrict（dispose 旧 + 注册新），effect 兜底最终清理。
     agentCtx.effect(
@@ -860,10 +1029,37 @@ export function apply(ctx) {
     return onAgentCreated(agent);
   });
   const offChange = ctx.on("tools/change", () => recomputeAll());
+
+  // cd 跟随（主路径，skill 机制同款）：agent/pre-step 是每步的异步 waterfall
+  // 钩子，可 await——每步实时 workingDirectory.ensure 拿当前投影（cd 会改的
+  // 就是它），与 state.cwd 漂移则清空并当场 await recompute，本步 assemble
+  // （pre-step 之后）即按新项目生效，零下一拍。skill-filesystem/tool-skill
+  // 的目录发现正是这个形态（每步 ensure），无失效窗口。
+  const offPreStep = ctx.on("agent/pre-step", async ({ agent, signal }, next) => {
+    const decision = await next();
+    if (decision.kind === "reject") return decision;
+    const state = agent ? states.get(agent.id) : null;
+    if (!state || !state.cwd) return decision;
+    try {
+      const wd = ctx.get("workingDirectory");
+      if (!wd || typeof wd.ensure !== "function") return decision;
+      const real = await wd.ensure(agent, signal);
+      if (typeof real === "string" && real.length > 0 && pathKey(real) !== pathKey(state.cwd)) {
+        debugLog(`cwd drift (pre-step) agent=${agent.id} old=${state.cwd} new=${real} → recompute`);
+        state.cwd = null;
+        state.cwdRetries = 0;
+        state.unlocked.clear();
+        await recompute(state);
+      }
+    } catch {}
+    return decision;
+  });
+
   ctx.effect(
     () => () => {
       offCreated();
       offChange();
+      offPreStep();
     },
     "mcp-gate: listeners",
   );
@@ -1027,6 +1223,23 @@ export function apply(ctx) {
     return servers;
   }
 
+  /** 诊断：每个活 agent 的 cwd / 项目覆盖 / 解锁集 / deny 概况（排查 GUI 侧生效状态）。 */
+  function handleAgents(req, res) {
+    const agents = [];
+    for (const [id, st] of states) {
+      agents.push({
+        agentId: id,
+        cwd: st.cwd || null,
+        projectServers: st.projectServers || {},
+        unlocked: [...(st.unlocked || [])],
+        denyCount: st.lastDenyKey ? st.lastDenyKey.split("\n").length : 0,
+        restrictActive: !!st.restrictDisposer,
+        indexEntries: st.index && st.index !== EMPTY_INDEX && typeof st.index.size === "number" ? st.index.size : 0,
+      });
+    }
+    sendJson(res, 200, { ok: true, agents });
+  }
+
   async function handleState(req, res) {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
@@ -1092,6 +1305,8 @@ export function apply(ctx) {
       if (Object.keys(entry).length === 0) delete globalConfig.servers[server];
       else globalConfig.servers[server] = entry;
       await saveGlobalConfig();
+      // 全局 enabled 切换改变连接决策（禁用→断开，除非有项目覆盖为启用）。
+      await syncConnections();
       recomputeAll();
       sendJson(res, 200, { ok: true, server, entry });
     } catch (error) {
@@ -1115,11 +1330,23 @@ export function apply(ctx) {
         });
         return;
       }
-      const project = await loadProjectOverrides(cwd);
-      if (enabled === null) delete project.servers[server];
-      else project.servers[server] = { enabled };
-      await writeJson(projectConfigPath(cwd), project);
+      // 写集中库（唯一写入口）。首次改某项目时物化条目：把旧版项目内文件并入
+      // （此后旧文件只作回退读，不再被更新）。
+      const key = pathKey(cwd);
+      const store = sanitizeProjectsStore(await readJson(projectsStorePath(), { projects: {} }));
+      let entry = store.projects[key];
+      if (!entry) {
+        const legacy = await loadProjectOverrides(cwd);
+        entry = { path: cwd, servers: legacy.servers };
+      }
+      entry.path = cwd;
+      if (enabled === null) delete entry.servers[server];
+      else entry.servers[server] = { enabled };
+      store.projects[key] = entry;
+      await writeJson(projectsStorePath(), store);
       recomputeAll();
+      // 项目覆盖可能改变连接决策（全局禁用 + 项目启用 → 需要建连）。
+      await syncConnections();
       sendJson(res, 200, { ok: true, cwd, server, enabled });
     } catch (error) {
       sendJson(res, 500, {
@@ -1352,6 +1579,7 @@ export function apply(ctx) {
     routesRegistered = true;
     const disposers = [
       web.register({ kind: "exact", path: "/plugins/mcp-gate/state", handler: handleState }),
+      web.register({ kind: "exact", path: "/plugins/mcp-gate/agents", handler: handleAgents }),
       web.register({ kind: "exact", path: "/plugins/mcp-gate/master", handler: handleMaster }),
       web.register({ kind: "exact", path: "/plugins/mcp-gate/global", handler: handleGlobal }),
       web.register({ kind: "exact", path: "/plugins/mcp-gate/project", handler: handleProject }),

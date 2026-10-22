@@ -11,10 +11,14 @@
 //   curl -H '@-'，不进命令行、不进环境变量）。
 // - 显示开关持久化：~/.dsh/storages/whale-bubble/config.json（node:fs 直读直写）。
 // - 数据通道：webServer HTTP 路由：
-//     GET  /plugins/whale-bubble/state       → { ok, providers, workspace }
-//     POST /plugins/whale-bubble/refresh     → { id? }        → { ok, providers, workspace }
-//     POST /plugins/whale-bubble/set-key     → { id, value }  → { ok, providers, workspace }
-//     POST /plugins/whale-bubble/set-visible → { visible }    → { ok, providers, workspace }
+//     GET  /plugins/whale-bubble/state        → { ok, providers, workspace }
+//     POST /plugins/whale-bubble/refresh      → { id? }        → { ok, providers, workspace }
+//     POST /plugins/whale-bubble/set-key      → { id, value }  → { ok, providers, workspace }
+//     POST /plugins/whale-bubble/set-visible  → { visible }    → { ok, providers, workspace }
+//     POST /plugins/whale-bubble/set-session  → { id }         → { ok, providers, workspace }
+// - 工作区跟随当前浏览会话：client 面在 conversation.composer.dock（session scope）挂
+//   隐形哨兵，经 /set-session 上报当前会话 id；host 用 agents.get(id) + workingDirectory.get
+//   解析该会话有效目录，再对齐注册表工作区标题；解析不到时回落"最近活跃"旧行为。
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, basename, resolve } from "node:path";
@@ -237,6 +241,8 @@ function readBody(req, maxBytes = 1000000) {
 export function apply(ctx) {
   const memoryKeys = {};
   let visible = true;
+  // 当前浏览会话（client 面哨兵经 /set-session 上报；空串 = 未知，走回落逻辑）
+  let lastSessionId = "";
   const entries = {};
   for (const def of PROVIDERS) {
     entries[def.id] = {
@@ -245,8 +251,58 @@ export function apply(ctx) {
     };
   }
 
+  // Windows 路径宽松规范化：统一分隔符、去尾分隔符、小写（比较用）
+  function normPath(p) {
+    return String(p || "").replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
+  }
+
+  // 目录 → 注册表工作区（最长前缀匹配；目录即工作区根或位于其下）
+  function matchWorkspace(list, dir) {
+    const target = normPath(dir);
+    if (target.length === 0) return null;
+    let best = null;
+    let bestLen = -1;
+    for (const w of list) {
+      if (!w || !w.path) continue;
+      const base = normPath(w.path);
+      if (base.length === 0) continue;
+      if (target === base || target.startsWith(base + "/")) {
+        if (base.length > bestLen) { bestLen = base.length; best = w; }
+      }
+    }
+    return best;
+  }
+
   function workspaceInfo() {
-    // 当前工作区 = 最近活跃（updatedAt 最新）的注册工作区；
+    // 当前浏览会话优先：client 面 dock 哨兵上报会话 id（lastSessionId），
+    // host 经 agents.get + workingDirectory.get 解析该会话有效目录，
+    // 标题对齐注册表工作区（最长前缀匹配）；解析不到走回落。
+    if (lastSessionId) {
+      try {
+        // 注：agents.get(id)/wd.get(agent) 在当前 runtime(0.2.1-rc.2)内部抛
+        // "session.snapshotEvents is not a function"；改经 ctx.sessions.get(id)
+        // 拿 Session 对象再交 workingDirectory.get(session)。
+        const sessions = ctx.get("sessions");
+        const session = sessions && typeof sessions.get === "function" ? sessions.get(lastSessionId) : null;
+        const wd = ctx.get("workingDirectory");
+        if (session && wd && typeof wd.get === "function") {
+          const dir = wd.get(session);
+          if (typeof dir === "string" && dir.length > 0) {
+            let title = basename(dir) || dir;
+            try {
+              const reg = ctx.get("workspaceRegistry");
+              const list = reg && typeof reg.list === "function" ? reg.list() : null;
+              if (Array.isArray(list)) {
+                const ws = matchWorkspace(list, dir);
+                if (ws && ws.title) title = ws.title;
+              }
+            } catch {}
+            return { title, path: dir };
+          }
+        }
+      } catch {}
+    }
+    // 回落：最近活跃（updatedAt 最新）的注册工作区；
     // 注册表不可用时回落到进程 cwd。
     try {
       const reg = ctx.get("workspaceRegistry");
@@ -399,6 +455,11 @@ export function apply(ctx) {
         path: "/plugins/whale-bubble/set-visible",
         handler: handleSetVisible,
       }),
+      web.register({
+        kind: "exact",
+        path: "/plugins/whale-bubble/set-session",
+        handler: handleSetSession,
+      }),
     ];
     ctx.effect(
       () => () => {
@@ -499,6 +560,25 @@ export function apply(ctx) {
       }
       visible = typeof (args && args.visible) === "boolean" ? args.visible : true;
       await persistConfig();
+      sendJson(res, 200, { ok: true, ...snapshot() });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: String(error && error.message ? error.message : error) });
+    }
+  }
+
+  async function handleSetSession(req, res) {
+    try {
+      const raw = await readBody(req);
+      let args;
+      try {
+        args = JSON.parse(raw);
+      } catch {
+        sendJson(res, 400, { ok: false, error: "invalid JSON body" });
+        return;
+      }
+      let id = String(args && args.id == null ? "" : args.id).trim();
+      if (id.length > 128) id = id.slice(0, 128);
+      lastSessionId = id;
       sendJson(res, 200, { ok: true, ...snapshot() });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: String(error && error.message ? error.message : error) });
