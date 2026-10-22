@@ -28,7 +28,7 @@
 //   - 连接建立/重连后 syncGlobalTools() 把工具注册到全局 ctx（tools/change 触发存量 agent 重算）
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { connectServer } from "./connector.js";
@@ -1344,6 +1344,7 @@ export function apply(ctx) {
     }
   }
 
+  let routesRegistered = false;
   const registerRoutes = () => {
     const web = ctx.get("webServer");
     if (web === undefined) return false;
