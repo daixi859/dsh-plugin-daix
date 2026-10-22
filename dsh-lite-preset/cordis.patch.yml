@@ -1,5 +1,7 @@
 # Agent preset lite：文件操作 / 命令执行 / 网络 / ask_user_question / skill，
-# 外加 agent-instructions（加载 ~/.dsh/AGENTS.md 与项目内各级 AGENTS.md / CLAUDE.md）。
+# 外加 agent-instructions（加载 ~/.dsh/AGENTS.md 与项目内各级 AGENTS.md / CLAUDE.md）、
+# 子代理委派（spawn / fork / 控制工具）与后台任务（tool-jobs）；
+# subagents / jobs 服务与 spawn / fork 后端由基座 dsh-base 提供。
 # 基座服务（ctx.fs、ctx.subprocess、web、skills、attachments）由部署层提供，
 # 这里只挂工具行；用 plugin_manager 安装本 bundle 后，新会话即可在模式选择器中选择。
 - insert:
@@ -8,7 +10,7 @@
       config:
         id: lite
         name: 精简
-        description: 仅文件操作、命令执行、网络、提问与技能工具，含 AGENTS.md 工作区指令。
+        description: 仅文件操作、命令执行、网络、提问与技能工具，含子代理委派与后台任务管理、AGENTS.md 工作区指令。
         order: 5
         plugins:
           # 身份提示词，不注册任何模型可见工具。
@@ -53,6 +55,29 @@
             name: '@deepseek-ai/dsh-skill-filesystem'
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
+          # 子代理委派：只挂工具行。subagents 服务与 spawn/fork 进程内
+          # 后端已由基座（dsh-base）在 Host 层注册，preset 内重复挂载
+          # 会以 "provider already registered" 冲突。一个工具实例 =
+          # 一个 provider + 一个 toolName，故挂两行。无 agentPreset
+          # 选择时 spawn 子代理自动加入父方当前 preset 代际（lite 自身）。
+          - id: tool-subagent-spawn
+            name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: spawn
+              toolName: subagent
+          - id: tool-subagent-fork
+            name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: fork
+              toolName: subagent_fork
+          # 子代理控制：send_message / interrupt_agent / list_agents
+          - id: tool-subagent-control
+            name: '@deepseek-ai/dsh-tool-subagent-control'
+          # 后台任务：job_output / job_list / job_kill。jobs 注册表
+          # 同样由基座提供；未挂 tool-jobs 的组合无法启动任何后台
+          # 工作（含 shell 的 run_in_background），故为必需件。
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
           # Lite 专属工具遮蔽（本 bundle 导出的 Host 插件）：隐藏基座层
           # （dsh-base）无条件挂载的 working_directory 模型工具。cwd 已由
           # working-directory 服务每轮注入运行时上下文，shell 工具另有
