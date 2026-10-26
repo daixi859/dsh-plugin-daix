@@ -1,6 +1,6 @@
 {
   "name": "dsh-whale-bubble",
-  "description": "右下角鲸鱼小气泡：悬浮显示当前浏览会话的工作区、Z.ai 5h 配额与 DeepSeek 余额，点击图标强制刷新，内联配置弹层管理 Key 与显示开关。",
+  "description": "右下角鲸鱼小气泡：悬浮显示当前浏览会话的工作区、Z.ai 5h 配额、DeepSeek 余额与 OpenDesign 钱包/套餐，点击图标强制刷新，内联配置弹层管理 Key 与显示开关。",
   "version": "0.2.0",
   "private": true,
   "type": "module",

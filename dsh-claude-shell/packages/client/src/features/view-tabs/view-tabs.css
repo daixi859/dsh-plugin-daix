@@ -1,9 +1,13 @@
 /* ---------- conversation view tabs: the skin's own segment control ---------- */
-/* The host's tab strip (ConversationRoot's .tabs / .tab / .tabActive) gets
-   the same shape as the sidebar's 进行中 / 已归档 control: a 7px pill shell with a
-   raised pill for the active tab, instead of the shipped underline. Scoped to the
-   strip packages/client/src/features/view-tabs/view-tabs.ts stamps data-dsh-view-tabs on — the one in the
-   conversation header — so the settings page's own tabs keep their look. The
+/* The host draws the strip in two shapes: up to 0.2.1-rc.2 the tablist is the
+   strip itself (`_tabs`), and from 0.2.1-rc.3 a row (`_tabs`) holds the tablist
+   (`_viewTabs`) beside the "more views" button. The host counts room for every
+   tab from that row's width, so the row keeps the header's full width while the
+   plate inside it hugs the tabs: view-tabs.ts marks the row `data-dsh-view-tabs-row`,
+   and the block below lays out the strip itself. Both shapes wear the shipped
+   pill shell with a raised pill for the active tab, instead of the underline.
+   Every strip rule is scoped to the stamp view-tabs.ts puts on the one in the
+   conversation header, so the settings page's own tabs keep their look. The
    stamp stands in for `header:has(tabs) tabs`, which made every DOM change
    re-match the whole document. */
 body[data-dsh-claude-shell] [data-dsh-view-tabs] {
@@ -11,7 +15,8 @@ body[data-dsh-claude-shell] [data-dsh-view-tabs] {
   /* Hug the tabs. The host's strip is a full-width flex row, so without this the
      pill shell stretches across the whole header: the "groove" reads as one long
      empty bar and clicks to the right of the last tab land on nothing — which is
-     what made switching feel unresponsive. */
+     what made switching feel unresponsive. The row shape overrides this with the
+     width its own measurement needs. */
   width: fit-content;
   max-width: 100%;
   flex: none;
@@ -38,16 +43,79 @@ body[data-dsh-claude-shell] [data-dsh-view-tabs] {
   opacity: 0;
   transition: opacity 0.16s ease;
 }
+/* The row shape (0.2.1-rc.3): it spans the header so the host counts room for
+   every tab, centres what it draws, and takes no press of its own — only the
+   controls standing in it do. The shell the base rule draws belongs to the plate
+   inside it, so the row gives that up: it draws no box of its own. */
+body[data-dsh-claude-shell] [data-dsh-view-tabs-row] {
+  display: flex;
+  width: 100%;
+  /* The host pads the left end for its title's line; a centred group takes the
+     row's own middle instead. */
+  padding-left: 0;
+  padding: 0;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  background: none;
+  border-radius: 0;
+  pointer-events: none;
+}
+/* What stands in the row takes a press despite the row's own stand-down, and is
+   the only part of the titlebar band that is not a drag region — the row spans
+   the window there, so the mark cannot sit on the row. */
+body[data-dsh-claude-shell] [data-dsh-view-tabs-row] > * {
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+/* The tablist of the row shape is the plate: it hugs the tabs, wears the shell
+   the base rule draws, and keeps them on one line whatever the window does with
+   the rest of the row. */
+body[data-dsh-claude-shell] [data-dsh-view-tabs-row] > [data-conversation-tabs] {
+  display: inline-flex;
+  flex: none;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  width: fit-content;
+  max-width: 100%;
+  /* The host keeps a 25px line for its own tab boxes; the plate is the shell
+     drawn around them. */
+  min-height: 0;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--dsh-claude-shell-hover-bg, rgba(0, 0, 0, 0.06));
+  /* The sliding pill is absolutely placed against the plate. */
+  position: relative;
+}
+body[data-dsh-claude-shell][data-ds-dark-theme] [data-dsh-view-tabs-row] > [data-conversation-tabs] {
+  background: rgba(255, 255, 255, 0.08);
+}
+/* The row's "more views" button: a chip seated beside the plate, sized like a
+   tab so the two line up. Its colour states stay the host's own — the accent
+   marks the view sitting in the menu. */
+body[data-dsh-claude-shell] [data-dsh-view-tabs-row] button[class*="_viewsMore"] {
+  width: 22px;
+  height: 22px;
+  margin-top: 0;
+  border-radius: 5px;
+}
+body[data-dsh-claude-shell] [data-dsh-view-tabs-row] button[class*="_viewsMore"]:hover {
+  background: var(--dsh-claude-shell-hover-bg, rgba(0, 0, 0, 0.06));
+}
 /* `centerCol` is the pane holding the header AND the transcript, so hovering the
    strip itself keeps it up, while the right sidebar — which sits outside it —
    does not bring it back. */
 body[data-dsh-claude-shell] [class*="centerCol"]:hover [data-dsh-view-tabs] {
   opacity: 1;
 }
-body[data-dsh-claude-shell][data-ds-dark-theme] [data-dsh-view-tabs] {
+body[data-dsh-claude-shell][data-ds-dark-theme] [data-dsh-view-tabs]:not([data-dsh-view-tabs-row]) {
   background: rgba(255, 255, 255, 0.08);
 }
-body[data-dsh-claude-shell] [data-dsh-view-tabs] > [class*="_tab"] {
+/* The tabs of both shapes: the flat strip holds them directly, the row shape
+   inside its plate. */
+body[data-dsh-claude-shell] [data-dsh-view-tabs] button[class*="_tab"] {
   appearance: none;
   border: none !important;
   background: transparent;
@@ -57,6 +125,8 @@ body[data-dsh-claude-shell] [data-dsh-view-tabs] > [class*="_tab"] {
   font-weight: 500;
   line-height: 18px;
   height: 22px;
+  /* The host asks for a 25px box; the pill above it is one segment. */
+  min-height: 0;
   padding: 0 10px;
   border-radius: 5px;
   cursor: pointer;
@@ -64,42 +134,47 @@ body[data-dsh-claude-shell] [data-dsh-view-tabs] > [class*="_tab"] {
   -webkit-user-select: none;
   transition: color 0.2s ease;
 }
-body[data-dsh-claude-shell] [data-dsh-view-tabs] > [class*="_tab"]:hover {
+body[data-dsh-claude-shell] [data-dsh-view-tabs] button[class*="_tab"]:hover {
   color: var(--dsw-alias-label-primary, #141413);
 }
-body[data-dsh-claude-shell] [data-dsh-view-tabs] > [class*="_tab"][aria-selected="true"],
-body[data-dsh-claude-shell] [data-dsh-view-tabs] > [class*="_tab"][class*="Active"] {
+body[data-dsh-claude-shell] [data-dsh-view-tabs] button[class*="_tab"][aria-selected="true"],
+body[data-dsh-claude-shell] [data-dsh-view-tabs] button[class*="_tab"][class*="Active"] {
   background: var(--dsw-alias-bg-overlay, #ffffff);
   color: var(--dsw-alias-label-primary, #141413);
   box-shadow: 0 1px 2px rgba(20, 20, 19, 0.10);
 }
-body[data-dsh-claude-shell][data-ds-dark-theme] [data-dsh-view-tabs] > [class*="_tab"][aria-selected="true"],
-body[data-dsh-claude-shell][data-ds-dark-theme] [data-dsh-view-tabs] > [class*="_tab"][class*="Active"] {
+body[data-dsh-claude-shell][data-ds-dark-theme] [data-dsh-view-tabs] button[class*="_tab"][aria-selected="true"],
+body[data-dsh-claude-shell][data-ds-dark-theme] [data-dsh-view-tabs] button[class*="_tab"][class*="Active"] {
   background: rgba(255, 255, 255, 0.14);
   color: var(--dsh-claude-shell-ink-strong);
   box-shadow: none;
 }
 /* The strip's sliding pill (shared/sliding-pill.css places and moves it):
    the raised box the active tab wore above, which the tab gives up while the
-   pill is there. */
-body[data-dsh-claude-shell] [data-dsh-view-tabs][data-dsh-claude-shell-pill]::before {
+   pill is there. The control wearing it is the plate in the row shape, the
+   strip itself in the older one. */
+body[data-dsh-claude-shell] [data-dsh-view-tabs][data-dsh-claude-shell-pill]::before,
+body[data-dsh-claude-shell] [data-dsh-view-tabs] > [data-dsh-claude-shell-pill]::before {
   top: 2px;
   bottom: 2px;
   border-radius: 5px;
   background: var(--dsw-alias-bg-overlay, #ffffff);
   box-shadow: 0 1px 2px rgba(20, 20, 19, 0.10);
 }
-body[data-dsh-claude-shell][data-ds-dark-theme] [data-dsh-view-tabs][data-dsh-claude-shell-pill]::before {
+body[data-dsh-claude-shell][data-ds-dark-theme] [data-dsh-view-tabs][data-dsh-claude-shell-pill]::before,
+body[data-dsh-claude-shell][data-ds-dark-theme] [data-dsh-view-tabs] > [data-dsh-claude-shell-pill]::before {
   background: rgba(255, 255, 255, 0.14);
   box-shadow: none;
 }
-body[data-dsh-claude-shell] [data-dsh-view-tabs][data-dsh-claude-shell-pill] > [class*="_tab"][aria-selected="true"],
-body[data-dsh-claude-shell] [data-dsh-view-tabs][data-dsh-claude-shell-pill] > [class*="_tab"][class*="Active"] {
+/* The tab under the pill gives up its own raised box, whichever control of the
+   two shapes wears the pill. */
+body[data-dsh-claude-shell] [data-dsh-view-tabs] [data-dsh-claude-shell-pill] button[class*="_tab"][aria-selected="true"],
+body[data-dsh-claude-shell] [data-dsh-view-tabs] [data-dsh-claude-shell-pill] button[class*="_tab"][class*="Active"] {
   background: transparent;
   box-shadow: none;
 }
 /* The shipped active-tab underline has no place in a pill. */
-body[data-dsh-claude-shell] [data-dsh-view-tabs] > [class*="_tab"]::after {
+body[data-dsh-claude-shell] [data-dsh-view-tabs] button[class*="_tab"]::after {
   display: none;
 }
 
@@ -123,15 +198,24 @@ body[data-dsh-claude-shell][data-dsh-titlebar-tabs] [data-dsh-view-tabs] {
   margin: 0 !important;
   transform: translate(-50%, -50%) !important;
   justify-self: auto !important;
+  /* The row keeps the strip's own 100% width: fixed, that box is the window's,
+     and the host counts the tabs it shows from exactly this width. */
   z-index: 30 !important;
-  /* The titlebar band is a drag region; the strip's tabs must stay clickable. */
-  -webkit-app-region: no-drag !important;
+  /* No `-webkit-app-region` here: in the row shape the strip spans the window,
+     so a no-drag mark on it would take the titlebar's own drag away. The flat
+     shape's strip is the tablist and marks itself below; the row's children
+     carry their own mark (the row rule above). */
   /* The pane-hover reveal stays the rule here, as it was inside the header. The
      strip now sits outside the pane, so the pointer leaving the pane on its way
      up must not blank it: its own hover keeps it up, and the longer fade covers
      the 40px crossing between the pane and the titlebar. */
   opacity: 0 !important;
   transition: opacity 0.3s ease !important;
+}
+/* The flat shape's strip IS the tablist, so it takes the press the tablist of
+   the row shape takes through its own child rule. */
+body[data-dsh-claude-shell][data-dsh-titlebar-tabs] [data-dsh-view-tabs]:not([data-dsh-view-tabs-row]) {
+  -webkit-app-region: no-drag !important;
 }
 body[data-dsh-claude-shell][data-dsh-titlebar-tabs] [data-dsh-view-tabs]:hover {
   opacity: 1 !important;

@@ -1,4 +1,5 @@
-import { WINDOWS_TITLEBAR_ATTRIBUTE } from '@dsh-claude-shell/contracts/dom'
+import { VIEW_TABS_LIST_SELECTOR, WINDOWS_TITLEBAR_ATTRIBUTE } from '@dsh-claude-shell/contracts/dom'
+import { contentBox } from '../../shared/content-box'
 import { createStamp } from '../../shared/dom'
 import { createSlidingPill } from '../../shared/sliding-pill'
 import type { HostContext } from '../../core/host'
@@ -36,10 +37,18 @@ import type manifest from './view-tabs.manifest'
  * would land on the title and the header actions; the measured shift already
  * seats it on the row beneath the strip.
  *
- * The strip itself is stamped `data-dsh-view-tabs`, and every strip rule in
- * view-tabs.css keys on that attribute. Finding the strip is a query this pass
- * runs once; as a stylesheet selector (`header:has(tabs) tabs`) it would make
- * the browser re-match the whole document on every DOM change.
+ * The strip itself is stamped `data-dsh-view-tabs`, and the row shape adds
+ * `data-dsh-view-tabs-row`; every strip rule in view-tabs.css keys on those
+ * attributes. Finding the strip is a query this pass runs once; as a stylesheet
+ * selector (`header:has(tabs) tabs`) it would make the browser re-match the
+ * whole document on every DOM change.
+ *
+ * The host draws the strip in two shapes. Up to 0.2.1-rc.2 the tablist IS the
+ * strip; from 0.2.1-rc.3 a row holds the tablist beside the "more views"
+ * button, and the host reads that row's width to decide how many tabs stay
+ * visible. The row therefore keeps the header's full width while the plate
+ * inside it hugs the tabs, so every box this pass places from is the strip's
+ * content box, not the row's.
  *
  * The strip's active pill slides between tabs (packages/client/src/shared/sliding-pill.ts).
  *
@@ -49,6 +58,7 @@ import type manifest from './view-tabs.manifest'
  */
 export function install(ctx: HostContext, ui: FeatureUi<typeof manifest>) {
   const HEADER = '[class*="_header"]:has([class*="_tabs"])'
+  const STRIP = '[class*="_tabs"]'
   /**
    * The title's TEXT, not its row or cluster: `.titleRow` is a flex row and the
    * cluster takes up the slack, so testing against them reported a clash on
@@ -71,7 +81,13 @@ export function install(ctx: HostContext, ui: FeatureUi<typeof manifest>) {
   /** Whether the last pass saw the host's Windows titlebar marker. */
   let titlebar = false
   /** The strip mark every strip rule in view-tabs.css keys on. */
-  const stripStamp = createStamp('data-dsh-view-tabs')
+  const stripStamp = createStamp<HTMLElement>('data-dsh-view-tabs')
+  /**
+   * The row shape's mark: the host's row spans the header for its own tab
+   * count, and the stylesheet keeps it wide while the plate inside it hugs the
+   * tabs. A strip that is its own tablist wears no such mark.
+   */
+  const rowStamp = createStamp<HTMLElement>('data-dsh-view-tabs-row')
   const pill = createSlidingPill('[aria-selected="true"]')
 
   /**
@@ -126,14 +142,18 @@ export function install(ctx: HostContext, ui: FeatureUi<typeof manifest>) {
   function sync() {
     syncTitlebar()
     const header = document.querySelector(HEADER)
-    const strip = header === null ? null : header.querySelector<HTMLElement>('[class*="_tabs"]')
+    const strip = header === null ? null : header.querySelector<HTMLElement>(STRIP)
+    // The row shape (0.2.1-rc.3): the tablist sits inside the row, and the pill
+    // travels in the tablist — the row spans the header for the host's own count.
+    const list = strip === null ? null : strip.querySelector<HTMLElement>(VIEW_TABS_LIST_SELECTOR)
     stripStamp.mark(strip)
-    pill.sync(strip)
+    rowStamp.mark(list === null ? null : strip)
+    pill.sync(list ?? strip)
     if (header === null || strip === null) return
     // Windows titlebar mode places the strip itself (view-tabs.css): it is
     // fixed there, so neither the measured shift nor the fallback applies.
     if (titlebar) return
-    const stripBox = rect(strip)
+    const stripBox = list === null ? rect(strip) : contentBox(strip)
     if (stripBox === null) return
     const headerBox = rect(header)
     if (headerBox === null) return
@@ -175,10 +195,11 @@ export function install(ctx: HostContext, ui: FeatureUi<typeof manifest>) {
       titlebar = false
     }
     const header = document.querySelector(HEADER)
-    const strip = header === null ? null : header.querySelector<HTMLElement>('[class*="_tabs"]')
+    const strip = header === null ? null : header.querySelector<HTMLElement>(STRIP)
     if (strip !== null) strip.style.removeProperty('--dsh-view-tabs-shift')
     pill.release()
     stripStamp.release()
+    rowStamp.release()
     last = null
     lastEl = null
     delete ui.viewTabs

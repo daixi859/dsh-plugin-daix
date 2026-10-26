@@ -4,11 +4,13 @@ import {
   HEADER_TITLE_ROW_SELECTOR,
   HEADER_TITLE_SELECTOR,
   HEADER_UTILITIES_SELECTOR,
+  VIEW_TABS_LIST_SELECTOR,
   VIEW_TABS_STRIP_SELECTOR,
   WINDOWS_MENU_SELECTOR,
 } from '@dsh-claude-shell/contracts/dom'
 import { observeSize } from '../../core/bus'
 import { desktopBand } from '../../core/desktop-band'
+import { contentBox } from '../../shared/content-box'
 import { createStamp, setAttributeIfChanged } from '../../shared/dom'
 import type { FeatureUi } from '../../core/feature'
 import type { HostContext } from '../../core/host'
@@ -180,9 +182,12 @@ export function install(ctx: HostContext, ui: FeatureUi<typeof manifest>) {
     // row; one still drawn in the header's own row takes nothing from it. Its
     // room is read off the width rather than the box: view-tabs centres it on
     // the window, this pass then moves it, and a fit decided against the moved
-    // box would answer differently on the next pass.
+    // box would answer differently on the next pass. The box is the strip's
+    // content — the plate and the overflow button — because the row the host
+    // draws them in spans the header (shared/content-box.ts).
     const stripEl = header === null ? null : header.querySelector<HTMLElement>(VIEW_TABS_STRIP_SELECTOR)
-    const stripBox = rect(stripEl)
+    const stripList = stripEl === null ? null : stripEl.querySelector<HTMLElement>(VIEW_TABS_LIST_SELECTOR)
+    const stripBox = stripEl === null ? null : stripList === null ? rect(stripEl) : contentBox(stripEl)
     const inBand = stripBox !== null && stripBox.top < band.height
     const stripWidth = stripBox === null || !inBand ? 0 : stripBox.width
     const stripRight = stripWidth === 0 ? 0 : document.documentElement.clientWidth / 2 + stripWidth / 2

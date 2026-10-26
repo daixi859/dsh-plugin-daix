@@ -51,6 +51,12 @@ export const HEADER_CORNER_SELECTOR = '[class*="headerCorner"]'
 export const CONVERSATION_HEADER_SELECTOR = '[class*="_header"]'
 /** The view-tab strip inside the header, whose box the band placement keeps clear of. */
 export const VIEW_TABS_STRIP_SELECTOR = '[class*="_tabs"]'
+/**
+ * The tablist inside that strip, where the host wraps it in a row beside the
+ * overflow menu (0.2.1-rc.3 and later). In the older shape the strip is the
+ * tablist itself, so a search inside the strip finds nothing.
+ */
+export const VIEW_TABS_LIST_SELECTOR = '[data-conversation-tabs]'
 
 /* ---------- the document, the shell and the browser API ---------- */
 

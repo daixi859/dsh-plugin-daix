@@ -5,6 +5,9 @@
 //     z.ai      GET api.z.ai|open.bigmodel.cn /api/monitor/usage/quota/limit（双域回退，
 //               无效 Key 为 HTTP 200 + body code:401）
 //     deepseek  GET api.deepseek.com/user/balance（多币种优先 CNY）
+//     opendesign GET amr-api.open-design.ai /api/v1/workspaces（首次解析工作区 id）+
+//               /api/v1/workspaces/{id}/billing/preflight（balanceUsd + codingPlan 窗口）。
+//               必须 Control Key（vela_*）；sk-amr-* 推理 Key 读不了账单，返回 401。
 // - 凭据解析：本机凭据服务（ctx.credentials，含进程环境与 .env 分层），自定义 Key 写入
 //   WHALE_* 引用（凭据库持久化；不可写时回落内存）。
 // - HTTP：经 ctx.subprocess 直接 spawn curl.exe（argv 直传；凭据只走 stdin 的
@@ -42,6 +45,13 @@ const PROVIDERS = [
     id: "deepseek", label: "DeepSeek", short: "DS", kindLabel: "余额",
     customRef: "WHALE_DEEPSEEK_API_KEY", envRefs: ["DEEPSEEK_API_KEY"],
     hint: "开放平台 Key，仅请求官方 api.deepseek.com。",
+  },
+  {
+    id: "opendesign", label: "OpenDesign", short: "OD", kindLabel: "钱包 + 套餐",
+    customRef: "WHALE_OPENDESIGN_API_KEY",
+    envRefs: ["OPENDESIGN_KEY", "OPENDESIGN_CONTROL_KEY", "VELA_CONTROL_KEY"],
+    keyName: "Control Key",
+    hint: "需 Control Key（vela_*，来自 OpenDesign Cloud / vela login），sk-amr-* 推理 Key 读不了账单。",
   },
 ];
 
@@ -205,7 +215,49 @@ async function fetchDeepSeek(ctx, key) {
   return { quota: null, windows: [], balanceText: cur + total.toFixed(2) };
 }
 
-const FETCHERS = { zai: fetchZai, deepseek: fetchDeepSeek };
+// OpenDesign（AMR 控制面，2026-10 实测响应）：
+//   工作区 id 不在 ~/.amr/config.json 里，只能 GET /api/v1/workspaces 取 items[0].workspaceId。
+//   余额与套餐窗口都在 preflight 回执里：balanceUsd + codingPlan.windows[]
+//   （durationSeconds 18000=5h、604800=7d）。
+const OD_BASE = "https://amr-api.open-design.ai/api/v1";
+let odWorkspaceId = "";
+
+async function fetchOpenDesign(ctx, key) {
+  const auth = ["Authorization: Bearer " + key];
+  if (odWorkspaceId === "") {
+    const list = await httpGet(ctx, OD_BASE + "/workspaces", auth);
+    const first = list && Array.isArray(list.items) && list.items.length > 0 ? list.items[0] : null;
+    if (!first || !first.workspaceId) throw new Error("无法解析 OpenDesign 工作区");
+    odWorkspaceId = String(first.workspaceId);
+  }
+  let data = null;
+  try {
+    data = await httpGet(
+      ctx, OD_BASE + "/workspaces/" + encodeURIComponent(odWorkspaceId) + "/billing/preflight", auth);
+  } catch (err) {
+    // 换了 Key / 工作区权限变化时缓存失效，下次重解析工作区
+    odWorkspaceId = "";
+    throw err;
+  }
+  const plan = data && data.codingPlan ? data.codingPlan : null;
+  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const balanceText = data && data.balanceUsd != null ? "$" + num(data.balanceUsd).toFixed(2) : null;
+  let quota = null;
+  const windows = [];
+  for (const w of (plan && Array.isArray(plan.windows) ? plan.windows : [])) {
+    const limit = num(w && w.limitCredits);
+    if (limit <= 0) continue;
+    const percent = clampPct((num(w.usedCredits) / limit) * 100);
+    const label = num(w.durationSeconds) === 18000 ? "5h" : num(w.durationSeconds) === 604800 ? "7d" : "窗口";
+    windows.push({ label, percent, resetsAt: resetIso(w.resetsAt) });
+  }
+  for (const w of windows) { if (w.label === "5h") { quota = w; break; } }
+  if (quota === null && windows.length > 0) quota = windows[0];
+  if (quota === null && balanceText === null) throw new Error("响应中无余额与额度窗口");
+  return { quota, windows, balanceText };
+}
+
+const FETCHERS = { zai: fetchZai, deepseek: fetchDeepSeek, opendesign: fetchOpenDesign };
 
 // ── HTTP 工具（webServer 路由用）──────────────────────────────────────────────
 
@@ -339,7 +391,7 @@ export function apply(ctx) {
         const e = entries[def.id];
         return {
           id: def.id, label: def.label, short: def.short, kindLabel: def.kindLabel,
-          hint: def.hint, envRef: def.envRefs[0],
+          hint: def.hint, envRef: def.envRefs[0], keyName: def.keyName || "API Key",
           status: e.status, quota: e.quota, windows: e.windows,
           balanceText: e.balanceText,
           credential: e.credential, error: e.error, updatedAt: e.updatedAt,

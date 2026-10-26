@@ -13,7 +13,8 @@
 // /set-session 通知 host 重算工作区，并经模块级监听器即时更新气泡卡片。
 // UI（挂 shell.overlay，整页右下角 fixed）：
 //   - 收起态：38px 圆形半透明鲸鱼图标（hover 实体化）；点击图标 = 强制刷新（转圈）
-//   - hover 卡片：工作区名/目录 + Z.ai 5h 窗口（百分比+重置时间）+ DeepSeek 余额；
+//   - hover 卡片：工作区名/目录 + Z.ai 5h 窗口（百分比+重置时间）+ DeepSeek 余额
+//     + OpenDesign（钱包余额 + 5h 窗口）；
 //     卡片右上 ⚙ 打开内联配置弹层；错误红点角标、no-key 降饱和
 //   - 配置弹层：双 Key 输入 + 显示开关，✕ 关闭
 //   - 无刷新按钮/更新时间/扩展区 UI（数据面预留 extraRows）
@@ -173,6 +174,7 @@ window.__ModuleLoader__.load({
         if (p.quota !== null && p.quota !== undefined) {
           var pct = p.quota.percent;
           var val = [pct + "%"];
+          if (p.balanceText) val.push(React.createElement("small", { key: "b" }, p.balanceText));
           if (p.quota.resetsAt) val.push(React.createElement("small", { key: "r" }, fmtTime(p.quota.resetsAt) + " 重置"));
           return [
             React.createElement("div", { className: "wb-row", key: "row" },
@@ -242,9 +244,10 @@ window.__ModuleLoader__.load({
         kstat = React.createElement("div", { className: "wb-kstat na" }, "加载中…");
       }
       return React.createElement("div", null,
-        React.createElement("label", null, p.label + " API Key"),
+        React.createElement("label", null, p.label + " " + (p.keyName || "API Key")),
         React.createElement("input", {
           type: "password", value: value, spellCheck: false, autoComplete: "off",
+          "data-wb-provider": p.id,
           placeholder: "留空使用 " + p.envRef,
           onChange: function (e) { setDraft(e.target.value); },
         }),
