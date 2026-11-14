@@ -1,5 +1,12 @@
 # dsh-mcp-gate · 添加 MCP 服务器功能方案
 
+> **状态：已被实现取代（方案变更）**。本文档描述的 `configEditor` + 写 profile patch 路线**没有采用**：
+> 实际实现改为插件自带内置连接器（`lib/connector.js`，stdio / streamable-http 直连），配置写在
+> `~/.dsh/plugins/mcp-gate/config.json`，保存即热生效、无需重启、也不碰 profile patch。
+> 下文「零、能力边界」「一、数据流」「四、风险与待验证」里的结论仅作历史记录；
+> 仍然成立的只有「二、${ENV} 引用语法」（已实现，见 `lib/connector.js` 的 `expandEnvRefs`）与「三、UI」的模板清单。
+> 现行行为以 `dsh-mcp-gate/README.md` 为准。
+
 用户已确认（grill-me 拷问结论）：写入走 configEditor 优先、保存时提示重启、env 支持 `${ENV}` 引用语法、内置 3-5 个常用模板。
 
 ## 零、能力边界（configEditor 源码核实，.tmp-asar/dsh-config-editor/lib/index.js）
@@ -29,9 +36,9 @@ Host 侧：
 - 服务器的 Cordis 行形状以 `D:\pi\mcp-servers-bundle\cordis.patch.yml`（playwright stdio + github http 两个实例）为参考模板。
 - serverName 校验 `[A-Za-z0-9_-]{1,32}` 全局唯一（dsh-mcp-client 契约）；patch 行 id 建议 `mcp-<serverName>`。
 
-## 二、${ENV} 引用语法
+## 二、${ENV} 引用语法（已实现）
 
-- env 值 / header 值支持 `${VAR}`：**落盘只存引用字符串**，运行时由服务器进程环境解析（stdio 子进程继承环境；http headers 由 mcp-client 组装时解析——若 mcp-client 不解析 header 引用则 v1 仅 stdio env 支持，headers 明文，文档标注）。
+- env 值 / header 值支持 `${VAR}`：**落盘只存引用字符串**，运行时由连接器解析（`lib/connector.js` 的 `expandEnvRefs`，逐字段带位置信息报错）。v1 里扩展到 `command`/`cwd`/`url`/`args`/`env`/`headers` 全部字段。
 - UI：输入 `${` 开头的值显示「env 引用」badge，避免误以为是明文 key；保存前检测纯高熵明文值给一次性提醒（启发式：长度≥24 且无空格且混大小写数字）。
 - 模板里的 GitHub Token 等一律写 `${GITHUB_TOKEN}` 形态。
 

@@ -19,6 +19,7 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 `lib/connector.js` 内置 stdio / streamable-http 双传输 MCP 客户端：插件自身连接服务器、注册远程工具（`makeRemoteTool`），**无需重启**。
 
 - 连接池：`pool: Map<name, {conn, cfgKey}>`，`cfgKey = JSON.stringify(connector)`；`syncConnections()` 串行化对账（断开多余/重建变化/新建缺失），任何配置落盘后调用。
+- **飞行中的改动不会被吞**：对账进行中再被调用时不再复用旧 promise，而是置 `syncPending` 标脏、本轮 `do/while` 结束后立刻补跑一轮；单次 `syncOnce` 里连接建立后还会复核 `globalConfig` 的 cfgKey，发现连接期间配置又变了就丢弃这条连接并再次标脏。否则"保存新配置后界面显示已连接、实际跑的是旧进程"。
 - **连接器工具注册到全局 ctx**（`syncGlobalTools`，`globalTools` 簿记）：agent scope 注册的工具不进 `schemas()` 快照、restrict 也折叠不了（restrict 只作用于继承面）——注册到 agent scope 的版本症状是"模型能直接调用但搜索找不到、也无法折叠"。
 - 连接条件：master 开 &&（全局 enabled || 任一项目覆盖为 enabled）。项目覆盖优先：全局禁用 + 本项目启用 → 连接照建（工具全局注册，可见性按项目收敛）；项目禁用不断开（只收紧本项目可见性）。
 - 同名工具撞车标记 `mcpRegistered` 防反复重试；`${VAR}` 引用在进程环境取值注入（密钥不明文落盘）。
@@ -48,8 +49,9 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 
 ### 接入管理与 ${ENV} 引用
 
-- add/update 的 `env`/`headers` 值支持 `${VAR}` 引用：连接时从进程环境取值注入，**密钥不明文落盘**；UI 对疑似密钥（token/key/secret/password/authorization）明文值黄条警示。
-- 内置模板：GitHub (HTTP)、Playwright (stdio)、Fetch (stdio)。
+- add/update 的 `command`/`cwd`/`url`/`args`/`env`/`headers` 值都支持 `${VAR}` 引用：连接时从进程环境取值注入，**密钥不明文落盘**；UI 对疑似密钥（token/key/secret/password/authorization）明文值黄条警示。
+- 展开发生在 `connector.js` 的 `expandEnvRefs()`（`evalServerCfg` 里逐字段调用）。变量未设置时**报错而不是原样保留**——留原文的症状是 GitHub 回 401 `Authorization header is badly formatted`，用户看不出是环境变量没配；错误文案形如 `env var "GITHUB_TOKEN" is not set (referenced as ${GITHUB_TOKEN} in headers.Authorization)`。配置求值失败会造一个 `status:"error"` 的连接（`connectServer` 兜住），不会让整轮对账崩掉。
+- 内置模板：GitHub (HTTP)、Playwright (stdio)、Fetch (stdio)。模板与配置视图都按 `args` 数组给参数；表单初值 `normalizeInitial` 同时接受 `args` 数组与历史的 `argsText` 多行文本，两者缺一就会「点了模板保存后参数静默丢失」。
 - **粘贴 JSON 导入**：添加服务器弹窗顶部切到「粘贴 JSON 导入」，粘贴 `mcpServers` 配置一键导入（`POST /import`），可直接从 Claude Code / Cursor 的配置复制。
 
 
@@ -65,16 +67,23 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 - 工具 `execute` 返回值会被框架做 lossless JSON 校验：带 `undefined` 字段（如 `structuredContent: undefined`）会被拒（症状 `tool "X" returned invalid output: value is not lossless JSON`），只回已定义字段。
 - **config.json 里的 `!!js` 表达式要插件自己求值**：Loader 只求值 patch 文件里的 `!!js`；config.json 是纯 `JSON.parse`，`!!js '`Bearer ${process.env.GITHUB_TOKEN}`'` 会原样进 HTTP 头（症状 GitHub `Authorization header is badly formatted`）。connector.js 的 `connectServer` 入口经 `evalServerCfg`/`evalJsValue` 求值（headers/env/command/cwd/url/args）。
 - **Windows spawn npx/uvx 必须 `shell: true`**（它们是 .cmd 批处理，不带 shell 直接 ENOENT），且 `child.on("error")` 必须监听——否则 spawn 失败成为未捕获异常打崩宿主进程。stdio 传输经 `transport.onFail` 把 spawn 错误快速失败传导给 initialize。
+- **shell:true 下命令不存在不会触发 `error` 事件**：cmd.exe 自己把「'xxx' 不是内部或外部命令」打到 stderr 后 exit 1。只监听 `error` 会让 initialize 干等 `INIT_TIMEOUT_MS`（15s），保存后页面长时间无反馈。现在 `exit` 事件里若还没收到过任何 JSON 就置 `exitError` 并在 60ms 后（等 stderr 落地）快速失败；错误文案形如 `command "xxx" exited before MCP handshake (code=1) | stderr: …`。
+- **子进程 stderr 是 GBK**：Windows 中文版 cmd.exe 的报错直接 `toString()` 得到一串 U+FFFD 乱码，用户看不懂也搜不到。`decodeProcessOutput()` 先按 UTF-8 解，出现替换字符再退回 `TextDecoder("gbk")`，UI 里能看到中文原话。
+- **DSH 进程的 PATH 可能不含 node/npx**（fnm 等版本管理器只在交互式 shell 里注入）。此时即使 SHIM 路径写对，`npx.cmd` 内部调用 `node` 仍会失败（症状：`'"node"' 不是内部或外部命令`）。解法是在该服务器的 `env` 里覆盖 `Path`，例如 `{"Path":"C:\\Users\\<you>\\AppData\\Roaming\\fnm\\aliases\\default;C:\\WINDOWS\\system32;C:\\WINDOWS"}`；用 `aliases\\default` 这个 junction 比写死具体版本目录稳。
 - `setx` 设置的环境变量对**已运行的进程不可见**（包括从旧 Explorer 启动的 GUI）；改完后要重启 GUI 进程（必要时注销重登）。UI 连接错误显示服务器返回的真实错误文本，先看错误再排查。
 
 ## 调试
 
-环境变量 `MCP_GATE_DEBUG=1` → 日志写 `~/.dsh/plugins/mcp-gate/debug.log`（apply / agent/created / pre-restrict deny-all / register / recompute / restrict deny 名单 / cwd 解析重试 / cwd drift）。
+环境变量 `MCP_GATE_DEBUG=1` → 日志写 `~/.dsh/plugins/mcp-gate/debug.log`（apply / agent/created / pre-restrict deny-all / register / recompute / restrict deny 名单 / cwd 解析重试 / cwd drift / 连接对账）。
+
+**改了 lib/ 里的代码后在宿主里生效**：插件源码由 profile 的 `link:` 提供，运行中的宿主不会自动热重载。用 `plugin_manager` 对该插件 `set_plugin` 先 `enabled:false` 再 `enabled:true` 即可用新代码重新 apply（返回 `application: "applied"`）；没有这一步，所有实测都跑在旧代码上，会误判"修复无效"。
 
 ## 测试
 
-- `node test/connector-unit.mjs`：内置连接器单测（17 项）——RPC 纯函数（ndjson/SSE/错误提取）、stdio 真连 mini-mcp-server、node:http 假 streamable-http 服务器（SSE+session 头）、死端口与超时路径。
+- `node test/connector-unit.mjs`：内置连接器单测（35 项）——RPC 纯函数（ndjson/SSE/错误提取）、stdio 真连 mini-mcp-server、node:http 假 streamable-http 服务器（SSE+session 头）、死端口与超时路径、GBK stderr 解码、命令不存在时 `<5000ms` 快速失败、`${VAR}` 展开（缺变量报错 + 求值失败降级为 error 连接）。
 - `node test/config-unit.mjs`：配置与导入逻辑单测（41 项）。从 `lib/index.js` 大括号配对提取纯函数，覆盖 normalizeServerInput 校验、connectorView 编辑预填（`${ENV}` 原样回填）、parseMcpServersJson/fromImportedEntry 的映射与错误路径、pathKey 规范化与 sanitizeProjectsStore 集中库清洗、wantsConnection 项目覆盖优先建连决策。
+- `node test/client-form-unit.mjs`：表单初值单测（10 项）。从 `lib/client.js` 抽出 `TEMPLATES` / `objToRows` / `rowsFrom` / `normalizeInitial` 到 vm 里跑，锁住「模板用 `args`、配置视图用 `argsText` 两种形态都要接住」这条回归防线。
+- `node test/compile-check.mjs`：借 `@deepseek-ai/dsh-tools` 的 `defineTool` 本地编译 `mcp_search` 参数，dump 生成的 JSON Schema。依赖从 `DSH_PROFILE_DIR/node_modules`、`DSH_HOME/profiles/*/node_modules` 依次探测，也可用 `DSH_TOOLS_ENTRY` 指定绝对路径（不再硬编码机器路径）。
 - E2E 见下节；`test/mini-mcp-server.js`（echo/time_now/add 三工具）为验证 fixture。
 
 ## E2E 复跑（headless）
@@ -84,5 +93,10 @@ MCP 渐进式披露 + 三层开关管理的 DSH 插件。MCP 工具默认折叠�
 pwsh -NoProfile -ExecutionPolicy Bypass -File <abs>/test/e2e-live.ps1
 # 断言：final 含 echo: hello-connector（mcp_search 解锁 → mcp__demo__echo 调用成功）
 # 注意：必须用 pwsh 7 执行（Windows PowerShell 5.1 按 ANSI 读 UTF-8 脚本会解析错乱）
-# 其它 fixture：test/e2e-patch.yml 只含 zai 模型行；proj-disabled / proj-enabled 项目覆盖目录
+# 其它 fixture：proj-disabled / proj-enabled 项目覆盖目录
 ```
+
+headless 复跑的两个坑（都踩过，症状都不指向真因）：
+
+- **patch 行必须指到入口文件**：headless profile 不含 mcp-gate，`test/e2e-patch.yml` 用 `insert` 把它插进来。`name` 写成目录（`file:///…/dsh-mcp-gate`）时 Loader 只报 `failed to import`（`dsh-app-boot/lib/index.js:3905-3913`：`fiber === undefined` 的占位文案，不含真实原因），必须写成 `file:///…/dsh-mcp-gate/lib/index.js`。脚本把 yml 里的 `__GATE__` 占位符替换成仓库绝对路径后再喂给 `--patch`，所以换机器/换盘符不用改 fixture。
+- **`inject` 不能硬依赖 headless 没有的服务**：`export const inject = ["tools", "timer", "workingDirectory", "systemPrompt"]` 会让插件在 headless 里永远 `pending (waiting for service: workingDirectory)`——headless profile 没有 working-directory 这个 entry，全 profile 的 entry 列表里也不存在提供该服务的包。代码里所有 `ctx.get("workingDirectory")` 都带空值检查（属可选依赖），因此 `inject` 只保留 `tools`/`timer`/`systemPrompt`，`workingDirectory` 走运行时 `ctx.get` 取。desktop profile 有 `include:working-directory`，取值照常生效。

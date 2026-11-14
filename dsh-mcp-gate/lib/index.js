@@ -39,7 +39,7 @@ import { homedir } from "node:os";
 import { connectServer } from "./connector.js";
 
 export const name = "mcp-gate";
-export const inject = ["tools", "timer", "workingDirectory", "systemPrompt"];
+export const inject = ["tools", "timer", "systemPrompt"];
 
 /** 无 tunable；占位以符合官方 Config 形态。 */
 export const Config = undefined;
@@ -49,6 +49,7 @@ export const Config = undefined;
 const MCP_PREFIX = "mcp__";
 const SEARCH_TOOL = "mcp_search";
 const EXPOSURES = ["direct", "deferred", "hidden"];
+const SERVER_NAME_RE = /^[A-Za-z0-9_-]{1,32}$/;
 const DEFAULT_EXPOSURE = "deferred";
 
 const DEBUG = process.env.MCP_GATE_DEBUG === "1";
@@ -616,6 +617,7 @@ export function apply(ctx) {
   /** serverName → { conn, cfgKey }。cfgKey 变化即重连。 */
   const pool = new Map();
   let syncing = null; // 串行化 syncConnections
+  let syncPending = false; // 飞行中有新改动 → 本轮结束后再跑一轮
 
   function cfgKeyOf(cfg) {
     return JSON.stringify(cfg);
@@ -635,32 +637,55 @@ export function apply(ctx) {
   }
 
   /** 使连接池收敛到配置期望；对每个活 agent 同步工具集；触发重算。 */
+  async function syncOnce() {
+    const anyProjectEnabled = await loadAnyProjectEnabled();
+    const want = new Map();
+    for (const name of Object.keys(globalConfig.servers)) {
+      if (wantsConnection(name, anyProjectEnabled)) {
+        want.set(name, globalConfig.servers[name].connector);
+      }
+    }
+    for (const [name, p] of [...pool]) {
+      if (!want.has(name) || cfgKeyOf(want.get(name)) !== p.cfgKey) {
+        p.conn.close();
+        pool.delete(name);
+        debugLog(`conn ${name}: closed (config changed or removed)`);
+      }
+    }
+    for (const [name, cfg] of want) {
+      if (pool.has(name)) continue;
+      const conn = await connectServer({ ...cfg, serverName: name }, { debugLog });
+      // 连接建立期间配置可能又被改掉（UI 连续保存）：此时池里不该留下旧配置的连接。
+      if (cfgKeyOf(globalConfig.servers[name]?.connector ?? {}) !== cfgKeyOf(cfg)) {
+        conn.close();
+        debugLog(`conn ${name}: discarded (config changed during connect)`);
+        syncPending = true;
+        continue;
+      }
+      pool.set(name, { conn, cfgKey: cfgKeyOf(cfg) });
+      debugLog(`conn ${name}: ${conn.status} via ${conn.transport.describe()} tools=${conn.tools.length}${conn.error ? " error=" + conn.error : ""}`);
+    }
+  }
+
+  /**
+   * 串行对账。飞行中再次被调用时**不能**直接复用旧 promise：那一轮不会看到这次改动，
+   * 池里会留下「配置已改、连接还是旧的」状态（保存后界面显示已连接、实际跑旧进程）。
+   * 改成标脏 + 本轮结束后再跑一轮，调用方的 await 覆盖到自己那次改动为止。
+   */
   function syncConnections() {
-    if (syncing) return syncing;
+    if (syncing) {
+      syncPending = true;
+      return syncing;
+    }
     syncing = (async () => {
       try {
-        const anyProjectEnabled = await loadAnyProjectEnabled();
-        const want = new Map();
-        for (const name of Object.keys(globalConfig.servers)) {
-          if (wantsConnection(name, anyProjectEnabled)) {
-            want.set(name, globalConfig.servers[name].connector);
-          }
-        }
-        for (const [name, p] of [...pool]) {
-          if (!want.has(name) || cfgKeyOf(want.get(name)) !== p.cfgKey) {
-            p.conn.close();
-            pool.delete(name);
-            debugLog(`conn ${name}: closed (config changed or removed)`);
-          }
-        }
-        for (const [name, cfg] of want) {
-          if (pool.has(name)) continue;
-          const conn = await connectServer({ ...cfg, serverName: name }, { debugLog });
-          pool.set(name, { conn, cfgKey: cfgKeyOf(cfg) });
-          debugLog(`conn ${name}: ${conn.status} via ${conn.transport.describe()} tools=${conn.tools.length}${conn.error ? " error=" + conn.error : ""}`);
-        }
+        do {
+          syncPending = false;
+          await syncOnce();
+        } while (syncPending);
       } finally {
         syncing = null;
+        syncPending = false;
       }
       syncGlobalTools();
       recomputeAll();
@@ -1234,7 +1259,8 @@ export function apply(ctx) {
         unlocked: [...(st.unlocked || [])],
         denyCount: st.lastDenyKey ? st.lastDenyKey.split("\n").length : 0,
         restrictActive: !!st.restrictDisposer,
-        indexEntries: st.index && st.index !== EMPTY_INDEX && typeof st.index.size === "number" ? st.index.size : 0,
+        // ToolIndex 的字段是 docs / df / avgLen（没有 size）：按 docs.length 报真实条数。
+        indexEntries: st.index && st.index !== EMPTY_INDEX ? st.index.docs.length : 0,
       });
     }
     sendJson(res, 200, { ok: true, agents });

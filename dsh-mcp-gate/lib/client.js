@@ -339,7 +339,7 @@ window.__ModuleLoader__.load({
           description: "Browser automation: navigate, click, fill forms, screenshot and read pages",
           transport: "stdio",
           command: "npx",
-          argsText: "@playwright/mcp@latest",
+          args: ["-y", "@playwright/mcp@latest"],
           envRows: [],
         },
       },
@@ -351,7 +351,7 @@ window.__ModuleLoader__.load({
           description: "Fetch web pages and convert them to markdown",
           transport: "stdio",
           command: "uvx",
-          argsText: "mcp-server-fetch",
+          args: ["mcp-server-fetch"],
           envRows: [],
         },
       },
@@ -361,6 +361,16 @@ window.__ModuleLoader__.load({
       return Object.keys(obj || {}).map(function (k) { return { k: k, v: String(obj[k]) }; });
     }
 
+    /** 模板给的已是行数组（headerRows/envRows），配置视图给的是对象（headers/env）：两种都接。 */
+    function rowsFrom(rows, obj) {
+      if (Array.isArray(rows)) {
+        return rows
+          .filter(function (r) { return r && typeof r === "object"; })
+          .map(function (r) { return { k: String(r.k == null ? "" : r.k), v: String(r.v == null ? "" : r.v) }; });
+      }
+      return objToRows(obj);
+    }
+
     function normalizeInitial(initial) {
       var c = initial || {};
       var form = {
@@ -368,10 +378,16 @@ window.__ModuleLoader__.load({
         description: typeof c.description === "string" ? c.description : "",
         transport: c.transport === "streamable-http" ? "streamable-http" : "stdio",
         command: typeof c.command === "string" ? c.command : "",
-        argsText: Array.isArray(c.args) ? c.args.join("\n") : "",
-        envRows: objToRows(c.env),
+        // 模板用 argsText/headerRows/envRows，配置视图（connectorView）用 args/headers/env：
+        // 两种形态都要接住，否则点模板后参数会静默丢失，保存下去的服务器起不来。
+        argsText: Array.isArray(c.args)
+          ? c.args.join("\n")
+          : typeof c.argsText === "string"
+            ? c.argsText
+            : "",
+        envRows: rowsFrom(c.envRows, c.env),
         url: typeof c.url === "string" ? c.url : "",
-        headerRows: objToRows(c.headers),
+        headerRows: rowsFrom(c.headerRows, c.headers),
         cwd: typeof c.cwd === "string" ? c.cwd : "",
       };
       if (form.envRows.length === 0 && form.transport === "stdio") form.envRows = [{ k: "", v: "" }];

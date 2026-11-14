@@ -88,6 +88,24 @@ export function parseInitResult(resp) {
 
 // ── 传输层 ────────────────────────────────────────────────────────
 
+/**
+ * 子进程输出解码：Windows 上 cmd.exe 的报错（如「'npx' 不是内部或外部命令」）是 GBK，
+ * 直接 toString() 只会得到一串 U+FFFD 乱码。先按 UTF-8 试，出现替换字符再退回 GBK。
+ */
+export function decodeProcessOutput(input) {
+  const buf = Buffer.isBuffer(input) ? input : Buffer.from(String(input), "utf8");
+  if (buf.length === 0) return "";
+  const utf8 = new TextDecoder("utf-8").decode(buf);
+  if (!utf8.includes("\uFFFD")) return utf8;
+  try {
+    const gbk = new TextDecoder("gbk").decode(buf);
+    if (!gbk.includes("\uFFFD")) return gbk;
+  } catch {
+    // 运行时不带 GBK 解码表：保持 UTF-8 结果
+  }
+  return utf8;
+}
+
 /** stdio 子进程传输。 */
 export function createStdioTransport(cfg, log) {
   // Windows 上 npx/uvx 等实为 .cmd 批处理脚本，spawn 不带 shell 会 ENOENT；
@@ -100,35 +118,56 @@ export function createStdioTransport(cfg, log) {
     windowsHide: true,
     shell: process.platform === "win32",
   });
-  let stderrTail = "";
+  let stderrBuf = Buffer.alloc(0);
   let spawnError = null;
+  let exitError = null;
+  let closing = false;
+  // 子进程是否已经开口（收到过一行合法 JSON）：handshake 完成前退出才算「启动失败」。
+  let spokeOnce = false;
   const failFns = [];
+  const failAll = (reason) => {
+    for (const fn of [...failFns]) {
+      try {
+        fn(reason);
+      } catch {}
+    }
+  };
   child.on("error", (err) => {
     // spawn 失败（ENOENT/EACCES 等）不监听会成为未捕获异常直接打崩宿主进程
     spawnError = `spawn "${cfg.command}" failed: ${err.message}`;
     log(`[stdio ${cfg.serverName}] ${spawnError}`);
-    for (const fn of [...failFns]) {
-      try {
-        fn(spawnError);
-      } catch {}
-    }
+    failAll(spawnError);
   });
   child.stderr.on("data", (d) => {
-    stderrTail = (stderrTail + d.toString()).slice(-8000);
-    log(`[stdio ${cfg.serverName}] stderr: ${d.toString().trim().slice(0, 200)}`);
+    stderrBuf = Buffer.concat([stderrBuf, d]);
+    if (stderrBuf.length > 8192) stderrBuf = stderrBuf.subarray(stderrBuf.length - 8192);
+    log(`[stdio ${cfg.serverName}] stderr: ${decodeProcessOutput(d).trim().slice(0, 200)}`);
   });
-  child.on("exit", (code, signal) => log(`[stdio ${cfg.serverName}] exited code=${code} signal=${signal}`));
+  child.on("exit", (code, signal) => {
+    log(`[stdio ${cfg.serverName}] exited code=${code} signal=${signal}`);
+    // 关键：shell:true 下命令不存在时 spawn 不报 ENOENT，cmd.exe 打完 stderr 就 exit 1。
+    // 只写日志会让 initialize 干等到 INIT_TIMEOUT_MS（15s）才对账，保存后页面长时间无反馈。
+    if (closing || spokeOnce || exitError !== null) return;
+    exitError = `command "${cfg.command}" exited before MCP handshake (code=${code}${signal ? `, signal=${signal}` : ""})`;
+    // 让 stderr 的 data 事件先落地（失败信息里要带上 cmd.exe 的原话）再判失败。
+    setTimeout(() => {
+      if (closing || spokeOnce) return;
+      failAll(exitError);
+    }, 60);
+  });
   let buf = "";
   const transport = {
     kind: "stdio",
     close() {
+      closing = true;
       try {
         child.kill();
       } catch {}
     },
     onFail(fn) {
       failFns.push(fn);
-      if (spawnError) fn(spawnError);
+      const settled = spawnError || exitError;
+      if (settled) fn(settled);
     },
     onMessage(fn) {
       child.stdout.on("data", (d) => {
@@ -137,19 +176,22 @@ export function createStdioTransport(cfg, log) {
         buf = rest;
         for (const line of lines) {
           try {
-            fn(JSON.parse(line));
+            const msg = JSON.parse(line);
+            spokeOnce = true;
+            fn(msg);
           } catch {}
         }
       });
     },
     async send(msg) {
-      if (spawnError) throw new Error(spawnError);
+      const settled = spawnError || exitError;
+      if (settled) throw new Error(settled);
       child.stdin.write(JSON.stringify(msg) + "\n");
     },
     describe() {
       return `stdio ${cfg.command}${(cfg.args || []).length ? " " + (cfg.args || []).join(" ") : ""}`;
     },
-    stderrTail: () => stderrTail,
+    stderrTail: () => decodeProcessOutput(stderrBuf),
   };
   return transport;
 }
@@ -329,7 +371,27 @@ export function createConnection(serverCfg, { debugLog = () => {} } = {}) {
 
 /** 由 server 配置建立并初始化连接（不抛错：失败以 status:"error" 表达）。 */
 export async function connectServer(serverCfg, opts) {
-  const conn = createConnection(evalServerCfg(serverCfg), opts);
+  let cfg;
+  try {
+    cfg = evalServerCfg(serverCfg);
+  } catch (err) {
+    // 配置求值失败（!!js 写错 / ${VAR} 未设置）：造一个 error 态连接，别让整轮对账炸掉。
+    const message = String((err && err.message) || err);
+    return {
+      name: serverCfg.serverName,
+      transport: { describe: () => `config ${serverCfg.transport || "stdio"}`, close() {}, stderrTail: () => "" },
+      status: "error",
+      error: message,
+      serverInfo: {},
+      instructions: "",
+      tools: [],
+      async call() {
+        throw new Error(message);
+      },
+      close() {},
+    };
+  }
+  const conn = createConnection(cfg, opts);
   return conn.initialize();
 }
 
@@ -347,17 +409,42 @@ export function evalJsValue(value) {
   }
 }
 
-/** 对 server 配置里的 command/cwd/url/args/headers/env 做 !!js 求值（返回新对象）。 */
+// ── ${VAR} 引用展开 ────────────────────────────────────────────────
+
+const ENV_REF_PATTERN = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+/**
+ * 展开 `${VAR}` 引用：落盘只存引用字符串，连接时从进程环境取值注入（密钥不明文落盘）。
+ *
+ * 缺变量时报错而不是原样保留——留原文的症状是 GitHub 回 401
+ * `Authorization header is badly formatted`，用户根本看不出是环境变量没设。
+ */
+export function expandEnvRefs(value, where) {
+  if (typeof value !== "string" || value.indexOf("${") < 0) return value;
+  return value.replace(ENV_REF_PATTERN, (_match, name) => {
+    const resolved = process.env[name];
+    if (resolved === undefined || resolved === "") {
+      throw new Error(`env var "${name}" is not set (referenced as \${${name}}${where ? ` in ${where}` : ""})`);
+    }
+    return resolved;
+  });
+}
+
+/** 对 server 配置里的 command/cwd/url/args/headers/env 做 !!js 求值与 ${VAR} 展开（返回新对象）。 */
 export function evalServerCfg(cfg) {
   const out = { ...cfg };
   for (const key of ["command", "cwd", "url"]) {
-    if (typeof out[key] === "string") out[key] = evalJsValue(out[key]);
+    if (typeof out[key] === "string") out[key] = expandEnvRefs(evalJsValue(out[key]), key);
   }
-  if (Array.isArray(out.args)) out.args = out.args.map((a) => evalJsValue(a));
+  if (Array.isArray(out.args)) {
+    out.args = out.args.map((a, i) => expandEnvRefs(evalJsValue(a), `args[${i}]`));
+  }
   for (const mapKey of ["headers", "env"]) {
     if (out[mapKey] && typeof out[mapKey] === "object" && !Array.isArray(out[mapKey])) {
       const map = {};
-      for (const [k, v] of Object.entries(out[mapKey])) map[k] = evalJsValue(v);
+      for (const [k, v] of Object.entries(out[mapKey])) {
+        map[k] = expandEnvRefs(evalJsValue(v), `${mapKey}.${k}`);
+      }
       out[mapKey] = map;
     }
   }

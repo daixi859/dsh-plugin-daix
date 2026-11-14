@@ -1,7 +1,7 @@
 // dsh-mcp-gate 连接器单测：纯函数 + stdio 真连接 + http 假服务器。
 // 运行：node test/connector-unit.mjs
 'use strict';
-import { createConnection, connectServer, ndjsonSplit, parseSseEvents, extractRpcMessage, rpcErrorText, parseToolList } from "../lib/connector.js";
+import { createConnection, connectServer, ndjsonSplit, parseSseEvents, extractRpcMessage, rpcErrorText, parseToolList, decodeProcessOutput, evalServerCfg, expandEnvRefs } from "../lib/connector.js";
 import { spawn } from "node:child_process";
 import http from "node:http";
 import path from "node:path";
@@ -130,6 +130,63 @@ const timeout = setTimeout(() => {
     check("timeout: rejects quickly", /fetch|ECONNREFUSED|HTTP/i.test(String(err.message || err)));
   }
   conn.close();
+}
+
+// ── 6. 启动失败快速失败 + stderr 解码（Windows shell:true 下命令不存在不会 ENOENT）──
+{
+  // GBK 字节（'npx' 不是内部或外部命令…）要解成中文，不能留一串 U+FFFD
+  const gbk = Buffer.from([0x27, 0x6e, 0x70, 0x78, 0x27, 0x20, 0xb2, 0xbb, 0xca, 0xc7, 0xc4, 0xda, 0xb2, 0xbf, 0xbb, 0xf2, 0xcd, 0xe2, 0xb2, 0xbf, 0xc3, 0xfc, 0xc1, 0xee]);
+  check("decode: gbk stderr → 中文", decodeProcessOutput(gbk) === "'npx' 不是内部或外部命令");
+  check("decode: ascii untouched", decodeProcessOutput(Buffer.from("plain", "utf8")) === "plain");
+  check("decode: empty", decodeProcessOutput(Buffer.alloc(0)) === "");
+
+  const t0 = Date.now();
+  const conn = await connectServer({ serverName: "missing", transport: "stdio", command: "definitely-not-a-real-command-xyz", args: [] });
+  const elapsed = Date.now() - t0;
+  check("stdio: missing command → error", conn.status === "error");
+  // 回归防线：以前要干等 INIT_TIMEOUT_MS=15000 才报错
+  check("stdio: missing command fails fast (<5000ms)", elapsed < 5000);
+  check("stdio: error explains early exit", /before MCP handshake/.test(conn.error || ""));
+  check("stdio: no mojibake in error", !(conn.error || "").includes("\uFFFD"));
+  conn.close();
+}
+
+// ── 7. ${VAR} 引用展开（落盘存引用，连接时才取进程环境）──
+{
+  process.env.PROBE_TOKEN = "tok-abc-123";
+  const cfg = evalServerCfg({
+    transport: "streamable-http",
+    url: "https://example.invalid/mcp",
+    headers: { Authorization: "Bearer ${PROBE_TOKEN}" },
+    env: { TOKEN: "${PROBE_TOKEN}", LITERAL: "plain" },
+    args: ["--token", "${PROBE_TOKEN}"],
+  });
+  check("envref: header expanded", cfg.headers.Authorization === "Bearer tok-abc-123", cfg.headers.Authorization);
+  check("envref: env expanded", cfg.env.TOKEN === "tok-abc-123");
+  check("envref: args expanded", cfg.args[1] === "tok-abc-123");
+  check("envref: literal untouched", cfg.env.LITERAL === "plain");
+  check("envref: no ${ left", !JSON.stringify(cfg).includes("${"));
+  check("envref: missing var silent for other strings", expandEnvRefs("no refs", "x") === "no refs");
+
+  let threw = "";
+  try {
+    expandEnvRefs("${DEFINITELY_UNSET_VAR_XYZ}", "headers.Authorization");
+  } catch (err) {
+    threw = String(err.message || err);
+  }
+  check("envref: missing var throws", /env var "DEFINITELY_UNSET_VAR_XYZ" is not set/.test(threw), threw);
+  check("envref: error names the field", /headers\.Authorization/.test(threw), threw);
+
+  // 求值失败要变成 error 态连接，不能让 syncConnections 整轮炸掉
+  const bad = await connectServer({
+    serverName: "badcfg",
+    transport: "streamable-http",
+    url: "https://example.invalid/mcp",
+    headers: { Authorization: "Bearer ${DEFINITELY_UNSET_VAR_XYZ}" },
+  });
+  check("envref: connectServer returns error status", bad.status === "error", bad.status);
+  check("envref: error carried into connection", /DEFINITELY_UNSET_VAR_XYZ/.test(bad.error || ""), bad.error);
+  delete process.env.PROBE_TOKEN;
 }
 
 clearTimeout(timeout);

@@ -3,7 +3,16 @@
 # 只注入 zai LLM 路由与默认模型（headless profile 无自带凭据行；key 走全局凭据服务 refs）。
 # demo MCP 服务器不再走 patch（旧版 mcp-client 接入），改由 mcp-gate config.json 的
 # 内置连接器驱动（E2E 脚本负责备份/写入/恢复 ~/.dsh/plugins/mcp-gate/config.json）。
+# headless profile 本身不含 mcp-gate，所以这里用 file:// 路径把它作为额外 overlay 行插进来，
+# 否则任务里根本没有 mcp_search 工具可用（脚本会误报「网关没连上」）。
+# 注意两件事：
+#   1) 必须指到入口文件 lib/index.js。指到目录（.../dsh-mcp-gate）时 Loader 只报
+#      `failed to import`，并不给出真实原因，容易误判成语法错误。
+#   2) __GATE__ 是占位符，由 e2e-live.ps1 替换成仓库绝对路径后再喂给 --patch，
+#      这样换台机器/换盘符都不用改本文件。
 - insert:
+    - id: mcp-gate
+      name: 'file:///__GATE__/lib/index.js'
     - id: llm-pi-ai
       name: '@deepseek-ai/dsh-llm-pi-ai'
       config:

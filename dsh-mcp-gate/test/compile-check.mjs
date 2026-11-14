@@ -1,6 +1,36 @@
-// 本地编译 mcp_search 的 parameters，dump 生成的 JSON Schema
-const toolsUrl = "file:///D:/wsl/dsh-plugin-daix/.tmp-asar/dsh/dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js";
-const mod = await import(toolsUrl);
+// 本地编译 mcp_search 的 parameters，dump 生成的 JSON Schema。
+// 依赖 @deepseek-ai/dsh-tools：优先从当前 profile 的 node_modules 解析，
+// 其次退回 DSH_HOME/profiles/node_modules（共享层），最后才用环境变量覆盖。
+// 不写死任何机器路径——旧版本硬编码 D:/wsl/... 导致换机必然 ERR_MODULE_NOT_FOUND。
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const TOOLS_ENTRY = join("@deepseek-ai", "dsh-tools", "lib", "index.js");
+
+function resolveToolsUrl() {
+  const candidates = [];
+  if (process.env.DSH_TOOLS_ENTRY) candidates.push(process.env.DSH_TOOLS_ENTRY);
+  const home = process.env.DSH_HOME;
+  if (home) {
+    if (process.env.DSH_PROFILE_DIR) {
+      candidates.push(join(process.env.DSH_PROFILE_DIR, "node_modules", TOOLS_ENTRY));
+    }
+    for (const profile of ["desktop", "web", "dsh-tui"]) {
+      candidates.push(join(home, "profiles", profile, "node_modules", TOOLS_ENTRY));
+    }
+    candidates.push(join(home, "profiles", "node_modules", TOOLS_ENTRY));
+  }
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return pathToFileURL(candidate).href;
+  }
+  throw new Error(
+    `cannot locate ${TOOLS_ENTRY}; set DSH_TOOLS_ENTRY to its absolute path. ` +
+      `tried:\n  ${candidates.join("\n  ") || "(no candidates: DSH_HOME is unset)"}`,
+  );
+}
+
+const mod = await import(resolveToolsUrl());
 const defineTool = mod.defineTool;
 
 const def = defineTool({
