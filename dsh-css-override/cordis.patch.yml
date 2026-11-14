@@ -1,8 +1,0 @@
-# dsh-css-override bundle patch: inserts the plugin row into the web profile
-# roster. Applied as a profile bundle layer (the `dsh.bundle.patch` manifest
-# field); activate with `dsh plugin --profile web add <abs path>`.
-- insert:
-    - id: css-override
-      name: 'dsh-css-override'
-      inject:
-        - webServer

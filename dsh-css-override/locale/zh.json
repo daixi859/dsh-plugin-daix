@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "CSS 覆盖",
-    "description": "在设置里维护多条 CSS 规则，勾选启用的规则按顺序注入到页面 body 尾部覆盖应用样式；规则落盘到 $DSH_HOME/css-override/rules.json。"
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "CSS Override",
-    "description": "Keep multiple CSS rules in Settings; enabled rules are injected in order at the end of <body> to override the app's styles, persisted to $DSH_HOME/css-override/rules.json."
-  }
-}
