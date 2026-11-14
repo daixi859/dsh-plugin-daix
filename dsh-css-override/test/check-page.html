@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" /><title>dsh-css-override browser check</title>
+<style>
+  body{margin:0;padding:16px;background:#eef1f6;color:#172a45;font:13px/1.55 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  #verdict{padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #d8dee9;margin-bottom:12px;white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+  #stage{background:#fff;border:1px solid #d8dee9;border-radius:12px;padding:14px;min-height:60px}
+</style></head>
+<body>
+<div id="verdict">running…</div>
+<div id="stage"></div>
+<script>
+/* The platform's lazy module table. The GUI shell installs this before any
+   plugin bundle runs; here it captures the registration for the checks. */
+window.__ModuleLoader__ = {
+  __modules: {},
+  __last: undefined,
+  load: function (entry) { this.__modules[entry.id] = entry; this.__last = entry; }
+};
+window.__errors = [];
+window.addEventListener('error', function (e) { window.__errors.push(String(e.message)); });
+window.addEventListener('unhandledrejection', function (e) { window.__errors.push('rejection: ' + String(e.reason && e.reason.message ? e.reason.message : e.reason)); });
+
+/* React shim: this page owns a REAL DOM, so only the hooks need backing.
+   Hook state is keyed PER COMPONENT INSTANCE, exactly as React does it — a
+   single shared list would let a nested component (RuleRow) read its parent's
+   hook slots. Each mount starts empty and the component re-renders whenever
+   the plugin store notifies (useSyncExternalStore → rerender → __mount). */
+(function () {
+  /* Hook frames are keyed by component identity, which is stable across
+     re-renders (a page has ONE OverridePage and one RuleRow per rule), so
+     state persists exactly as React's per-instance slots do. */
+  var hookMap = new Map();
+  var hookStack = [], cursor = 0;
+  var effects = [], rerender = function () {}, hostEl = null, ownerSeq = 0, ownerAlias = null;
+  function beginComponent(fn) {
+    var key = ownerAlias !== null ? ownerAlias : fn;
+    if (!hookMap.has(key)) hookMap.set(key, []);
+    hookStack.push({ key: key, slots: hookMap.get(key) });
+    cursor = 0;
+  }
+  function endComponent() { hookStack.pop(); cursor = 0; }
+  function frame() { return hookStack[hookStack.length - 1]; }
+  function slot(index, initial) {
+    var f = frame();
+    if (f.slots.length <= index) f.slots[index] = typeof initial === 'function' ? initial() : initial;
+    return f.slots[index];
+  }
+  function write(index, value) { frame().slots[index] = value; }
+  function setSlot(index, value, owner) {
+    var f = owner === undefined ? frame() : owner;
+    f.slots[index] = typeof value === 'function' ? value(f.slots[index]) : value;
+    rerender();
+  }
+  function createElement(type, props) {
+    var children = Array.prototype.slice.call(arguments, 2);
+    if (typeof type === 'function') return { __c: type, props: Object.assign({}, props, { children: children }) };
+    var el = document.createElement(type === '#' ? 'div' : type);
+    Object.keys(props || {}).forEach(function (k) {
+      var v = props[k];
+      if (k === 'children' || k === 'key' || k === 'ref') return;
+      if (k === 'className') { el.className = v; return; }
+      if (k === 'style') { Object.assign(el.style, v); return; }
+      if (k === 'value') { el.value = v; return; }
+      if (k === 'checked' || k === 'disabled' || k === 'spellCheck' || k === 'autoFocus') { try { el[k] = v; } catch (e) {} return; }
+      if (k === 'placeholder' || k === 'title' || k === 'role' || k.slice(0, 5) === 'aria-') { el.setAttribute(k, v); return; }
+      if (k.charAt(0) === 'o' && k.charAt(1) === 'n' && typeof v === 'function') { el.addEventListener(k.slice(2).toLowerCase(), v); return; }
+      el.setAttribute(k, v);
+    });
+    children.forEach(function (c) { put(el, c); });
+    return el;
+  }
+  function put(parent, child) {
+    if (child === null || child === undefined || typeof child === 'boolean') return;
+    if (Array.isArray(child)) { child.forEach(function (c) { put(parent, c); }); return; }
+    if (typeof child === 'object' && child.__c !== undefined) { parent.appendChild(render(child)); return; }
+    if (typeof child === 'object' && child.nodeType !== undefined) { parent.appendChild(child); return; }
+    parent.appendChild(document.createTextNode(String(child)));
+  }
+  function render(node) {
+    if (node === null || node === undefined) return document.createTextNode('');
+    beginComponent(node.__c);
+    var out = node.__c(node.props || {});
+    var box = document.createElement('div');
+    put(box, out);
+    endComponent();
+    return box.childNodes.length === 1 ? box.childNodes[0] : box;
+  }
+  function same(a, b) { return a !== undefined && b !== undefined && a.length === b.length && a.every(function (v, i) { return Object.is(v, b[i]); }); }
+  window.__React = {
+    createElement: createElement, Fragment: '#',
+    /* Setters/refs/memos capture their own hook frame, so calling one from an
+       effect or an event handler — outside render — still targets the right
+       component, exactly as React's closures do. */
+    useState: function (init) { var i = cursor++; var owner = frame(); return [slot(i, init), function (v) { setSlot(i, v, owner); }]; },
+    useRef: function (init) { var i = cursor++; return slot(i, { current: init }); },
+    useMemo: function (f, d) { var i = cursor++; var owner = frame(); var p = slot(i, undefined); if (p === undefined || !same(p.d, d)) { p = { d: d, value: f() }; owner.slots[i] = p; } return p.value; },
+    useCallback: function (f, d) { return window.__React.useMemo(function () { return f; }, d); },
+    useEffect: function (f, d) { var i = cursor++; var owner = frame(); var p = slot(i, undefined); if (p === undefined || !same(p.d, d)) effects.push(f); owner.slots[i] = { d: d }; },
+    useSyncExternalStore: function (sub, get) { var r = window.__React.useRef(false); if (r.current === false) { r.current = true; sub(function () { rerender(); }); } return get(); }
+  };
+  window.__lines = [];
+  window.__check = function (label, ok, detail) {
+    window.__lines.push((ok === true ? 'PASS  ' : 'FAIL  ') + label + (detail === undefined || detail === null ? '' : '   [' + String(detail).slice(0, 200) + ']'));
+    document.getElementById('verdict').textContent = window.__lines.join('\n');
+  };
+  /** `fresh` clears every component's hook state (a first mount). */
+  window.__mount = function (fresh) {
+    if (fresh === true) hookMap.clear();
+    hookStack = [];
+    effects = [];
+    hostEl.innerHTML = '';
+    hostEl.appendChild(render(window.__React.createElement(window.__page, {})));
+    var p = effects; effects = []; p.forEach(function (f) { try { f(); } catch (e) { window.__check('effect ran', false, (e && e.stack ? e.stack.split('\n').slice(0, 3).join(' <- ') : e.message)); } });
+  };
+  window.__setHost = function (el) { hostEl = el; };
+})();
+</script>
+<script src="/client.js"></script>
+<script>
+(async function () {
+  var React = window.__React;
+  var stage = document.getElementById('stage');
+  window.__setHost(stage);
+  function sheets() { return document.querySelectorAll('style[data-plugin-css="dsh-css-override/rules"]'); }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  try {
+    var loader = window.__ModuleLoader__;
+    if (loader === undefined || loader.__last === undefined) { window.__check('client bundle registered a module', false, 'window.__ModuleLoader__.__last is missing'); return; }
+    var entry = loader.__last;
+    window.__check('bundle module id is dsh-css-override', entry.id === 'dsh-css-override', entry.id);
+    var mod = entry.factory(function (id) { if (id === 'react') return React; throw new Error('unexpected require: ' + id); });
+    window.__check('bundle exports apply() and inject', typeof mod.apply === 'function' && Array.isArray(mod.inject), JSON.stringify(mod.inject));
+
+    var captured = null;
+    mod.apply({
+      get: function (n) { return n === 'locale' ? { bind: function () { return function (k) { return k; }; } } : undefined; },
+      effect: function (fn) { fn(); return function () {}; },
+      on: function () { return function () {}; },
+      slots: { inject: function (s, cb) { cb(); }, register: function (o, c) { captured = { options: o, component: c }; return function () {}; } }
+    });
+    window.__check('registered into settings.plugins.tab', captured !== null && captured.options.name === 'settings.plugins.tab' && captured.options.id === 'css-override',
+      captured === null ? 'nothing captured' : captured.options.name + ' / ' + captured.options.id);
+    if (captured === null) return;
+
+    await wait(900);
+
+    /* ---- 1. injection contract in a real DOM ---- */
+    var host = await (await fetch('/api/dsh-css-override/load')).json();
+    var first = sheets()[0] || null;
+    var enabled = (host.rules || []).filter(function (r) { return r.enabled === true && r.css.trim() !== ''; });
+    var disabled = (host.rules || []).filter(function (r) { return r.enabled !== true; });
+    window.__check('exactly one injected stylesheet', sheets().length === 1, sheets().length + ' found');
+    window.__check('stylesheet is the LAST element child of <body>', first !== null && document.body.lastElementChild === first);
+    window.__check('stylesheet sits inside <body>, not <head>', first !== null && first.parentElement === document.body);
+    var sheetText = first === null ? '' : first.textContent;
+    window.__check('every enabled rule is injected verbatim',
+      enabled.every(function (r) { return sheetText.indexOf(r.css.trim()) !== -1; }),
+      enabled.length + ' enabled / ' + (host.rules || []).length + ' stored / ' + sheetText.length + ' chars');
+    window.__check('disabled rules stay out of the page',
+      disabled.every(function (r) { return r.css.trim() === '' || sheetText.indexOf(r.css.trim()) === -1; }),
+      disabled.length + ' disabled');
+
+    /* ---- 2. real cascade: inject a rule through the host and measure ---- */
+    var probe = document.createElement('div');
+    probe.id = 'dco-cascade-probe';
+    probe.textContent = 'cascade probe';
+    probe.setAttribute('style', 'color: rgb(1, 2, 3)');
+    document.body.appendChild(probe);
+    var inlineColor = getComputedStyle(probe).color;
+    var withProbe = (host.rules || []).concat([{ id: 'verify-probe', name: 'verify probe', css: '#dco-cascade-probe { color: rgb(0, 128, 0) !important; }', enabled: true, label: '', hint: '' }]);
+    var saved = await fetch('/api/dsh-css-override/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rules: withProbe, revision: host.revision }) });
+    window.__check('host accepted a probe rule write', saved.ok === true, 'http ' + saved.status);
+    await window.__dshCssOverride.reload();
+    await wait(300);
+    var injectedColor = getComputedStyle(probe).color;
+    window.__check('injected !important overrides an inline declaration', injectedColor === 'rgb(0, 128, 0)', 'inline ' + inlineColor + ' -> injected ' + injectedColor);
+    var sheetProbe = document.querySelectorAll('style[data-plugin-css="dsh-css-override/rules"]')[0];
+    window.__check('probe rule reached the injected sheet', sheetProbe !== null && sheetProbe.textContent.indexOf('dco-cascade-probe') !== -1);
+    probe.remove();
+    /* Restore the user's document exactly. */
+    var afterProbe = await (await fetch('/api/dsh-css-override/load')).json();
+    await fetch('/api/dsh-css-override/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rules: host.rules, revision: afterProbe.revision }) });
+    await window.__dshCssOverride.reload();
+    await wait(300);
+    var restored = await (await fetch('/api/dsh-css-override/load')).json();
+    window.__check('probe rule removed again (document restored)', (restored.rules || []).length === (host.rules || []).length, (restored.rules || []).length + ' rules, revision ' + restored.revision);
+
+    /* ---- 3. the settings page, rendered for real ---- */
+    window.__page = captured.component;
+    window.__mount(true);
+    await wait(200);
+    var text = stage.textContent || '';
+    var switches = stage.querySelectorAll('button[role="switch"]');
+    window.__check('page renders one switch per stored rule', switches.length === (host.rules || []).length, switches.length + ' / ' + (host.rules || []).length);
+    window.__check('page shows the plugin title', text.indexOf('CSS 覆盖') !== -1);
+    window.__check('page shows rule names', (host.rules || []).length === 0 || text.indexOf(host.rules[0].name) !== -1, (host.rules[0] || {}).name);
+    window.__check('page shows the toolbar actions', text.indexOf('新建规则') !== -1 && text.indexOf('导出 CSS') !== -1 && text.indexOf('从磁盘重新载入') !== -1);
+    window.__check('page shows the durable file path', text.indexOf('rules.json') !== -1, host.path);
+    var chip = stage.querySelector('.dco_chip');
+    window.__check('storage status chip rendered', chip !== null, chip === null ? 'none' : chip.textContent.trim());
+    var card = stage.querySelector('.dco_card');
+    var bg = card === null ? '' : getComputedStyle(card).backgroundColor;
+    window.__check('page consumes theme tokens', card !== null && bg !== '' && bg !== 'rgba(0, 0, 0, 0)', 'card background ' + bg);
+    var rect = stage.getBoundingClientRect();
+    window.__check('page has real layout', rect.height > 100 && rect.width > 300, Math.round(rect.width) + 'x' + Math.round(rect.height));
+    var nameStyle = stage.querySelector('.dco_name');
+    window.__check('rule name is styled', nameStyle !== null && Number(getComputedStyle(nameStyle).fontWeight) >= 600, nameStyle === null ? 'none' : getComputedStyle(nameStyle).fontWeight);
+    /* Diagnostic: the exact markup of the first rule's title line. */
+    var titleLine = stage.querySelector('.dco_line');
+    window.__check('title line markup', true, titleLine === null ? 'no .dco_line' : titleLine.innerHTML.slice(0, 240));
+    var sw = stage.querySelector('button[role="switch"]');
+    var swColor = sw === null ? '' : getComputedStyle(sw).backgroundColor;
+    window.__check('switch reflects its state visually', sw !== null && swColor !== 'rgba(0, 0, 0, 0)', 'switch background ' + swColor);
+
+    /* ---- 4. toggle a rule in the real browser, watch the sheet and disk ---- */
+    if (switches.length > 0) {
+      /* Seed a known state first: earlier runs may have left either value. */
+      var seeded = await (await fetch('/api/dsh-css-override/load')).json();
+      var seedRules = seeded.rules.map(function (r, i) { return i === 0 ? Object.assign({}, r, { enabled: false }) : r; });
+      await fetch('/api/dsh-css-override/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rules: seedRules, revision: seeded.revision }) });
+      await window.__dshCssOverride.reload();
+      window.__mount();
+      await wait(600);
+      var base = await (await fetch('/api/dsh-css-override/load')).json();
+      var target = base.rules[0];
+      /* Every interaction re-queries: a store re-render replaces the nodes. */
+      var liveSwitch = function () { return stage.querySelector('button[role="switch"]'); };
+      window.__check('seeded the first rule to disabled', target.enabled === false, 'enabled=' + target.enabled);
+      /* Each interaction is followed by a re-render of the app, as React would
+         produce from the store notification; the shim renders on demand. */
+      liveSwitch().click();
+      await wait(900);
+      window.__mount();
+      await wait(120);
+      var after = await (await fetch('/api/dsh-css-override/load')).json();
+      window.__check('clicking the switch flipped enabled on disk', after.rules[0].enabled === true, 'enabled=' + after.rules[0].enabled);
+      window.__check('revision advanced on the write', after.revision > base.revision, base.revision + ' -> ' + after.revision);
+      var live = document.querySelectorAll('style[data-plugin-css="dsh-css-override/rules"]')[0];
+      var liveText = live === null ? '' : live.textContent;
+      window.__check('injected sheet follows the toggle (rule appears)', liveText.indexOf(after.rules[0].css.trim()) !== -1);
+      liveSwitch().click();
+      await wait(900);
+      window.__mount();
+      await wait(120);
+      var back = await (await fetch('/api/dsh-css-override/load')).json();
+      window.__check('clicking again turns it back off on disk', back.rules[0].enabled === false, 'enabled=' + back.rules[0].enabled);
+      var liveAfter = document.querySelectorAll('style[data-plugin-css="dsh-css-override/rules"]')[0];
+      window.__check('injected sheet drops the rule again', liveAfter === null || liveAfter.textContent.indexOf(back.rules[0].css.trim()) === -1);
+      /* Restore whatever the document had before this check. */
+      var finalRules = back.rules.map(function (r, i) { return i === 0 ? Object.assign({}, r, { enabled: target.enabled }) : r; });
+      await fetch('/api/dsh-css-override/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rules: finalRules, revision: back.revision }) });
+      await window.__dshCssOverride.reload();
+      window.__mount();
+      await wait(400);
+      var restoredState = await (await fetch('/api/dsh-css-override/load')).json();
+      window.__check('document restored to its original state', restoredState.rules[0].enabled === target.enabled, 'enabled=' + restoredState.rules[0].enabled);
+    }
+
+    /* ---- 5. expand a rule: the editor is a real textarea with highlighting ---- */
+    var expander = stage.querySelector('.dco_acts button');
+    if (expander !== null) {
+      expander.click();
+      await wait(80);
+      /* Expanding stores the open row in the plugin store, then re-renders. */
+      window.__mount();
+      await wait(120);
+      var area = stage.querySelector('textarea.dco_code');
+      window.__check('expanding a rule opens a real editor', area !== null, area === null ? 'no textarea' : area.value.length + ' chars');
+      await wait(300);
+      window.__check('editor survives the store re-render', stage.querySelector('textarea.dco_code') !== null);
+      var hl = stage.querySelector('pre.dco_hl');
+      window.__check('editor draws highlighted tokens', hl !== null && hl.querySelectorAll('span[class^="dco_tok-"]').length > 0, hl === null ? 'no overlay' : hl.querySelectorAll('span').length + ' spans');
+      var gutter = stage.querySelector('pre.dco_gutter');
+      window.__check('editor draws line numbers', gutter !== null && gutter.textContent.trim() !== '', gutter === null ? 'none' : JSON.stringify(gutter.textContent.trim().slice(0, 20)));
+      var applyBtn = Array.prototype.slice.call(stage.querySelectorAll('.dco_editFoot button')).filter(function (b) { return b.textContent.indexOf('应用') !== -1; })[0];
+      window.__check('apply button is disabled with no pending edit', applyBtn !== undefined && applyBtn.disabled === true);
+      /* The editor holds ONE control: the CSS box (no extra name/hint fields). */
+      var editor = stage.querySelector('.dco_editor');
+      var editorInputs = editor === null ? [] : editor.querySelectorAll('input,select');
+      window.__check('editor has no fields besides the CSS box', editorInputs.length === 0, editorInputs.length + ' extra: ' + Array.prototype.map.call(editorInputs, function (el) { return el.className + '/' + el.placeholder; }).join(', '));
+      window.__check('editor holds exactly one textarea', editor !== null && editor.querySelectorAll('textarea').length === 1);
+
+      /* ---- 6. style audit, measured while the editor is open ---- */
+      function matchingRules(el) {
+        var hits = [];
+        var sheets = document.styleSheets;
+        for (var s = 0; s < sheets.length; s++) {
+          var rules = null;
+          try { rules = sheets[s].cssRules; } catch (e) { continue; }
+          var owner = (sheets[s].ownerNode && sheets[s].ownerNode.dataset && sheets[s].ownerNode.dataset.pluginCss) || (sheets[s].href ? 'link' : 'inline');
+          for (var r = 0; r < rules.length; r++) {
+            var rule = rules[r];
+            if (!rule.selectorText) continue;
+            var sels = rule.selectorText.split(',');
+            for (var q = 0; q < sels.length; q++) {
+              var sel = sels[q].trim();
+              try {
+                if (el.matches(sel)) { hits.push(owner + ' :: ' + sel + ' { ' + rule.style.cssText.slice(0, 150) + ' }'); break; }
+              } catch (e2) { /* unsupported selector, skip */ }
+            }
+          }
+        }
+        return hits;
+      }
+      function audit(el, label) {
+        if (el === null || el === undefined) { window.__check('audit ' + label, false, 'element missing'); return; }
+        var cs = getComputedStyle(el);
+        var box = el.getBoundingClientRect();
+        window.__check('audit ' + label, true, Math.round(box.width) + 'x' + Math.round(box.height) + ' | line-height ' + cs.lineHeight + ' | font-size ' + cs.fontSize + ' | box-sizing ' + cs.boxSizing + ' | padding ' + cs.paddingTop + ' ' + cs.paddingLeft + ' | flex-grow ' + cs.flexGrow);
+        window.__check('rules on ' + label, true, matchingRules(el).join('  ||  ').slice(0, 700));
+      }
+      audit(stage.querySelector('textarea.dco_code'), 'css textarea');
+      audit(stage.querySelector('.dco_codeWrap'), 'code wrapper');
+      audit(stage.querySelector('.dco_btn'), 'first button');
+      audit(stage.querySelector('.dco_root'), 'page root');
+      window.__check('layout widths', true, 'stage=' + Math.round(stage.getBoundingClientRect().width) + ' card=' + Math.round(stage.querySelector('.dco_card').getBoundingClientRect().width));
+    }
+
+    window.__check('no uncaught page errors', window.__errors.length === 0, window.__errors.join(' | ').slice(0, 200));
+
+    var failed = window.__lines.filter(function (l) { return l.indexOf('FAIL') === 0; }).length;
+    document.getElementById('verdict').textContent = window.__lines.join('\n') + '\n\n' + (window.__lines.length - failed) + '/' + window.__lines.length + ' browser checks passed';
+    document.title = failed === 0 ? 'BROWSER-CHECK-OK' : 'BROWSER-CHECK-FAILED';
+  } catch (error) {
+    window.__check('check page ran to completion', false, error && error.stack ? error.stack.split('\n')[0] : String(error));
+    document.title = 'BROWSER-CHECK-FAILED';
+  }
+})();
+</script>
+</body></html>
