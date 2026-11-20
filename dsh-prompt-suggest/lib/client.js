@@ -24,7 +24,7 @@ window.__ModuleLoader__.load({
 
     // ── 样式 ────────────────────────────────────────────────────────────────
     var css = `
-.ps-btn{flex:none;width:24px;height:24px;border:none;background:transparent;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-secondary,#8a8a85);position:relative;padding:0;transition:color .15s,background .15s}
+.ps-btn{flex:none;width:28px;height:28px;border:none;background:transparent;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-secondary,#8a8a85);position:relative;padding:0;transition:color .15s,background .15s}
 .ps-btn:hover{color:var(--dsw-alias-brand-primary,#4a7dff);background:var(--dsw-alias-border-l1,rgba(0,0,0,.06))}
 .ps-btn:disabled{opacity:.45;cursor:default}
 .ps-btn svg{width:15px;height:15px;display:block}
