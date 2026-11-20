@@ -108,13 +108,15 @@
   .card .ws .name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card .ws .dir { color: var(--label-secondary); font-size: 11px; flex: none; }
   .row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
-  .row .prov { color: var(--label-secondary); flex: none; width: 74px; }
+  .row .prov { color: var(--label-secondary); flex: none; width: 50px; }
   .row .val { font-variant-numeric: tabular-nums; text-align: right; flex: 1; }
   .row .val small { color: var(--label-secondary); font-size: 11px; margin-left: 6px; }
-  .meter { height: 4px; border-radius: 2px; background: var(--border-l1); margin: 2px 0 6px; overflow: hidden; }
+  .meter { height: 5px; border-radius: 3px; background: var(--border-l1); margin: 2px 0 6px; overflow: hidden; }
   .meter i { display: block; height: 100%; border-radius: 2px; background: var(--ok); }
   .meter i.w { background: var(--warn); }
   .meter i.e { background: var(--err); }
+  .meters { display: flex; gap: 4px; margin: 2px 0 6px; } /* 5h | 周 左右并排 */
+  .meters .meter { flex: 1; margin: 0; }
   .card .meta { color: var(--label-secondary); font-size: 10.5px; margin-top: 6px; display: flex; justify-content: space-between; }
   .card .errline { color: var(--err); font-size: 11px; margin-top: 4px; }
   .card .actions { display: flex; gap: 8px; margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--border-l1); }
@@ -161,7 +163,7 @@
 </head>
 <body>
 <h1>🐳 鲸鱼小气泡 · 交互设计稿</h1>
-<div class="sub">dsh-whale-bubble — 挂载 shell.overlay，右下角悬浮；收起态纯图标 / hover 完整卡片 / ⚙ 内联配置弹层 / 点击=强制刷新 / 明暗双主题（token 对齐 --dsw-alias-*）</div>
+<div class="sub">dsh-whale-bubble — 挂载 shell.overlay，右下角悬浮；收起态纯图标 / hover 完整卡片（DS 置顶，Z.ai/OD 各带 5h+周窗口）/ ⚙ 内联配置弹层 / 点击=强制刷新 / 明暗双主题（token 对齐 --dsw-alias-*）</div>
 
 <div class="toolbar">
   <button onclick="show('collapsed')" id="b-collapsed">① 收起态（默认）</button>
@@ -191,9 +193,17 @@
       <span class="dir" title="D:\wsl\dsh-plugin-daix">📁 D:\wsl\…</span>
       <span class="gear" title="配置" onclick="show('cfg')">⚙</span>
     </div>
-    <div class="row"><span class="prov">Z.ai（GLM）</span><span class="val">34.2%<small>21:00 重置</small></span></div>
-    <div class="meter"><i class="w" style="width:34.2%"></i></div>
-    <div class="row"><span class="prov">DeepSeek</span><span class="val">¥53.20</span></div>
+    <div class="row"><span class="prov">DS</span><span class="val">¥53.20</span></div>
+    <div class="row"><span class="prov">Z.ai</span><span class="val">5h 34.2% · 周 12.5%<small>21:00</small></span></div>
+    <div class="meters">
+      <div class="meter"><i class="w" style="width:34.2%"></i></div>
+      <div class="meter"><i style="width:12.5%"></i></div>
+    </div>
+    <div class="row"><span class="prov">OD</span><span class="val">5h 45.0% · 周 8.3%<small>22:00</small></span></div>
+    <div class="meters">
+      <div class="meter"><i class="w" style="width:45%"></i></div>
+      <div class="meter"><i style="width:8.3%"></i></div>
+    </div>
   </div>
 
   <!-- ③ 配置弹层 -->
@@ -201,10 +211,13 @@
     <h3>鲸鱼气泡设置 <span class="x" onclick="show('collapsed')">✕</span></h3>
     <label>Z.ai / 智谱 API Key</label>
     <input type="password" value="sk-xxxxxxxxxxxxxxxx8f2a">
-    <div class="kstat ok">✓ 有效 · 5h 窗口已用 34.2%</div>
+    <div class="kstat ok">✓ 有效 · 5h 已用 34.2% · 周已用 12.5%</div>
     <label>DeepSeek API Key</label>
     <input type="password" value="sk-xxxxxxxxxxxxxxxx91c3">
     <div class="kstat ok">✓ 有效 · 余额 ¥53.20</div>
+    <label>OpenDesign Control Key</label>
+    <input type="password" value="vela-xxxxxxxxxxxxxx7d0b">
+    <div class="kstat ok">✓ 有效 · 钱包 $12.34 · 5h 已用 45.0% · 周已用 8.3%</div>
     <div class="switchrow"><span>显示悬浮气泡</span><div class="switch on" onclick="this.classList.toggle('on')"><i></i></div></div>
     <button class="save" onclick="show('card')">保存（保存即验证并刷新）</button>
     <div class="hint">Key 存本机凭据库（WHALE_* 引用）；未设置时回落环境变量 ZAI_API_KEY / DEEPSEEK_API_KEY。刷新间隔固定 5 分钟。</div>
@@ -219,8 +232,9 @@
   </div>
   <div class="card" id="v-refresh-card" style="display:none; opacity:.65">
     <div class="ws"><span class="name">dsh-plugin-daix</span><span class="dir">📁 D:\wsl\…</span></div>
-    <div class="row"><span class="prov">Z.ai（GLM）</span><span class="val">刷新中…</span></div>
-    <div class="row"><span class="prov">DeepSeek</span><span class="val">刷新中…</span></div>
+    <div class="row"><span class="prov">DS</span><span class="val">刷新中…</span></div>
+    <div class="row"><span class="prov">Z.ai</span><span class="val">刷新中…</span></div>
+    <div class="row"><span class="prov">OD</span><span class="val">刷新中…</span></div>
   </div>
 
   <!-- ⑤ 错误态：红点 + 卡片内错误行 -->
@@ -236,15 +250,24 @@
       <span class="dir">📁 D:\wsl\…</span>
       <span class="gear" title="配置" onclick="show('cfg')">⚙</span>
     </div>
-    <div class="row"><span class="prov">Z.ai（GLM）</span><span class="val">34.2%<small>21:00 重置</small></span></div>
-    <div class="row"><span class="prov">DeepSeek</span><span class="val" style="color:var(--err)">失败</span></div>
-    <div class="errline">DeepSeek：凭据无效或已过期（HTTP 401）</div>
+    <div class="row"><span class="prov">DS</span><span class="val" style="color:var(--err)">失败</span></div>
+    <div class="row"><span class="prov">Z.ai</span><span class="val">5h 34.2% · 周 12.5%<small>21:00</small></span></div>
+    <div class="meters">
+      <div class="meter"><i class="w" style="width:34.2%"></i></div>
+      <div class="meter"><i style="width:12.5%"></i></div>
+    </div>
+    <div class="row"><span class="prov">OD</span><span class="val">5h 45.0% · 周 8.3%<small>22:00</small></span></div>
+    <div class="meters">
+      <div class="meter"><i class="w" style="width:45%"></i></div>
+      <div class="meter"><i style="width:8.3%"></i></div>
+    </div>
+    <div class="errline">DS：凭据无效或已过期（HTTP 401）</div>
     <div class="meta"><span>点击鲸鱼图标可重试</span></div>
   </div>
 </div>
 
 <div class="note" style="margin-top:22px">
-  <b>已定决策</b>：独立插件（复制裁剪 fee-panel 取数，仅 zai+deepseek）｜shell.overlay 整页右下角悬浮｜DeepSeek logo 鲸鱼图标（点击=强制刷新）｜Z.ai 仅 5h 窗口（百分比 + 重置时间，不显示已用/总量）｜卡片右上角 ⚙ 打开内联配置弹层（两个 Key + 显示开关 + 保存即验证）｜无刷新按钮/更新时间/扩展区 UI（数据面预留）｜错误红点角标、无 key 降饱和。
+  <b>已定决策</b>：独立插件（复制裁剪 fee-panel 取数）｜shell.overlay 整页右下角悬浮｜DeepSeek logo 鲸鱼图标（点击=强制刷新）｜<b>卡片行序：DS 余额置顶第一行</b>，其后 Z.ai、OD 各一行，<b>5h/周用量合并同行</b>（5h 主 meter + 周淡 meter，重置时间取 5h）｜Z.ai 新增周用量（2026-11-20 实测：TOKENS_LIMIT unit 6=周档，原先只取 5h）｜OD 周用量（7d，数据面早已返回、UI 此前未展示）｜不显示 OD 钱包余额｜卡片右上角 ⚙ 打开内联配置弹层（三 Key + 显示开关 + 保存即验证）｜无刷新按钮/更新时间/扩展区 UI（数据面预留）｜错误红点角标、无 key 降饱和。
 </div>
 
 <script>
@@ -262,7 +285,10 @@
     document.querySelectorAll(".stage > div").forEach((el) => (el.style.display = "none"));
     for (const id of map[v]) document.getElementById(id).style.display = "";
   }
-  show("collapsed");
+  // ?state=collapsed|card|cfg|refresh|error  ?theme=dark|light — 直开指定状态（截图/验证用）
+  var qs = new URLSearchParams(location.search);
+  if (qs.get("theme") === "dark") document.documentElement.classList.add("dark");
+  show(qs.get("state") || "collapsed");
 </script>
 </body>
 </html>

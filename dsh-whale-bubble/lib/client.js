@@ -13,10 +13,10 @@
 // /set-session 通知 host 重算工作区，并经模块级监听器即时更新气泡卡片。
 // UI（挂 shell.overlay，整页右下角 fixed）：
 //   - 收起态：38px 圆形半透明鲸鱼图标（hover 实体化）；点击图标 = 强制刷新（转圈）
-//   - hover 卡片：工作区名/目录 + Z.ai 5h 窗口（百分比+重置时间）+ DeepSeek 余额
-//     + OpenDesign（钱包余额 + 5h 窗口）；
+//   - hover 卡片：工作区名/目录 + DS 余额置顶 + Z.ai/OD 各一行（5h/周用量合并文字，
+//     下方双进度条左右并排：左 5h、右 周）；
 //     卡片右上 ⚙ 打开内联配置弹层；错误红点角标、no-key 降饱和
-//   - 配置弹层：双 Key 输入 + 显示开关，✕ 关闭
+//   - 配置弹层：三 Key 输入 + 显示开关，✕ 关闭
 //   - 无刷新按钮/更新时间/扩展区 UI（数据面预留 extraRows）
 
 window.__ModuleLoader__.load({
@@ -51,10 +51,12 @@ window.__ModuleLoader__.load({
 .wb-wsname{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wb-wsdir{color:var(--dsw-alias-label-secondary,#8a8a85);font-size:11px;flex:none}
 .wb-row{display:flex;justify-content:space-between;align-items:center;padding:2px 0}
-.wb-prov{color:var(--dsw-alias-label-secondary,#8a8a85);flex:none;width:74px}
+.wb-prov{color:var(--dsw-alias-label-secondary,#8a8a85);flex:none;width:50px}
 .wb-val{font-variant-numeric:tabular-nums;text-align:right;flex:1}
 .wb-val small{color:var(--dsw-alias-label-secondary,#8a8a85);font-size:10px;margin-left:5px}
-.wb-meter{height:3px;border-radius:2px;background:var(--dsw-alias-border-l1,rgba(0,0,0,.08));margin:2px 0 4px;overflow:hidden}
+.wb-meter{height:5px;border-radius:3px;background:var(--dsw-alias-border-l1,rgba(0,0,0,.08));margin:2px 0 4px;overflow:hidden}
+.wb-meters{display:flex;gap:4px;margin:2px 0 4px}
+.wb-meters .wb-meter{flex:1;margin:0}
 .wb-meter i{display:block;height:100%;border-radius:2px;background:var(--dsw-alias-state-success,#2fa36b)}
 .wb-meter i.w{background:var(--dsw-alias-state-warning,#d98a1f)}
 .wb-meter i.e{background:var(--dsw-alias-state-error,#d9483b)}
@@ -168,22 +170,43 @@ window.__ModuleLoader__.load({
     }
 
     // ── 悬浮卡片 ────────────────────────────────────────────────────────────
+    // 窗口标签归一：后端 "5h"/"周"/"7d" → 显示 "5h"/"周"
+    function winLabel(w) {
+      return w.label === "7d" ? "周" : (w.label || "");
+    }
+
+    // 套餐窗口行：文字行合并 5h/周（"5h 34.2% · 周 12.5%" + 5h 重置时间），
+    // 下方双进度条左右并排（左 5h、右 周，各占一半宽）
+    function windowRows(p, wins) {
+      var text = "";
+      var resetAt = "";
+      for (var i = 0; i < wins.length; i++) {
+        var w = wins[i];
+        if (text !== "") text += " · ";
+        text += winLabel(w) + " " + w.percent + "%";
+        if (!resetAt && w.label === "5h" && w.resetsAt) resetAt = fmtTime(w.resetsAt);
+      }
+      var val = [React.createElement("span", { key: "t" }, text)];
+      if (resetAt) val.push(React.createElement("small", { key: "r" }, resetAt));
+      var meters = [];
+      for (var j = 0; j < wins.length; j++) {
+        var pct = wins[j].percent;
+        meters.push(React.createElement("div", { className: "wb-meter", key: j },
+          React.createElement("i", { className: barClass(pct), style: { width: Math.max(2, pct) + "%" } })));
+      }
+      return [
+        React.createElement("div", { className: "wb-row", key: "row" },
+          React.createElement("span", { className: "wb-prov" }, p.short),
+          React.createElement("span", { className: "wb-val" }, val)),
+        React.createElement("div", { className: "wb-meters", key: "meters" }, meters),
+      ];
+    }
+
     function ProviderRow(props) {
       var p = props.p;
       if (p.status === "ok") {
-        if (p.quota !== null && p.quota !== undefined) {
-          var pct = p.quota.percent;
-          var val = [pct + "%"];
-          if (p.balanceText) val.push(React.createElement("small", { key: "b" }, p.balanceText));
-          if (p.quota.resetsAt) val.push(React.createElement("small", { key: "r" }, fmtTime(p.quota.resetsAt) + " 重置"));
-          return [
-            React.createElement("div", { className: "wb-row", key: "row" },
-              React.createElement("span", { className: "wb-prov" }, p.short),
-              React.createElement("span", { className: "wb-val" }, val)),
-            React.createElement("div", { className: "wb-meter", key: "meter" },
-              React.createElement("i", { className: barClass(pct), style: { width: Math.max(2, pct) + "%" } })),
-          ];
-        }
+        var wins = p.windows || [];
+        if (wins.length > 0) return windowRows(p, wins);
         if (p.balanceText) {
           return React.createElement("div", { className: "wb-row", key: "row" },
             React.createElement("span", { className: "wb-prov" }, p.short),
@@ -232,8 +255,11 @@ window.__ModuleLoader__.load({
       var kstat = null;
       if (p.status === "ok") {
         var parts = [];
-        if (p.quota != null) parts.push("5h 已用 " + p.quota.percent + "%");
-        if (p.balanceText) parts.push("余额 " + p.balanceText);
+        var wins = p.windows || [];
+        for (var i = 0; i < wins.length; i++) {
+          parts.push(winLabel(wins[i]) + "已用 " + wins[i].percent + "%");
+        }
+        if (p.balanceText) parts.push("钱包 " + p.balanceText);
         kstat = React.createElement("div", { className: "wb-kstat ok" },
           "✓ 有效" + (parts.length > 0 ? " · " + parts.join(" · ") : ""));
       } else if (p.status === "error") {
@@ -296,7 +322,8 @@ window.__ModuleLoader__.load({
             onClick: function () {
               apiPost("/plugins/whale-bubble/set-visible", { visible: !(s.visible !== false) })
                 .then(function (r) { props.onState(r); })
-                .catch(function () {});
+                // 开关已乐观翻转：落盘失败至少留条痕迹，不能无声吞掉
+                .catch(function (e) { console.error("[whale-bubble] set-visible failed:", e); });
             },
           }, React.createElement("i", null))),
         React.createElement("button", { type: "button", className: "wb-save", disabled: saving, onClick: save },

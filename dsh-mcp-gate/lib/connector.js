@@ -129,7 +129,9 @@ export function createStdioTransport(cfg, log) {
     for (const fn of [...failFns]) {
       try {
         fn(reason);
-      } catch {}
+      } catch {
+        // 失败通知是尽力而为：一个监听器抛错不能阻断其余监听器收到通知
+      }
     }
   };
   child.on("error", (err) => {

@@ -35,16 +35,17 @@ export const Config = undefined;
 
 const REFRESH_MS = 5 * 60 * 1000;
 
+// 卡片行序跟随本数组：DS 余额置顶，其后 Z.ai、OD
 const PROVIDERS = [
-  {
-    id: "zai", label: "Z.ai / 智谱 GLM", short: "Z.ai", kindLabel: "订阅配额",
-    customRef: "WHALE_ZAI_API_KEY", envRefs: ["ZAI_API_KEY", "BIGMODEL_API_KEY"],
-    hint: "Coding Plan 专属 Key（z.ai / bigmodel.cn 控制台），两域 Key 不互通，失败时自动换域重试。",
-  },
   {
     id: "deepseek", label: "DeepSeek", short: "DS", kindLabel: "余额",
     customRef: "WHALE_DEEPSEEK_API_KEY", envRefs: ["DEEPSEEK_API_KEY"],
     hint: "开放平台 Key，仅请求官方 api.deepseek.com。",
+  },
+  {
+    id: "zai", label: "Z.ai / 智谱 GLM", short: "Z.ai", kindLabel: "订阅配额",
+    customRef: "WHALE_ZAI_API_KEY", envRefs: ["ZAI_API_KEY", "BIGMODEL_API_KEY"],
+    hint: "Coding Plan 专属 Key（z.ai / bigmodel.cn 控制台），两域 Key 不互通，失败时自动换域重试。",
   },
   {
     id: "opendesign", label: "OpenDesign", short: "OD", kindLabel: "钱包 + 套餐",
@@ -155,31 +156,57 @@ function throwIfBodyAuthError(data, who) {
   }
 }
 
-// ── fetcher：z.ai（只取 5h 窗口）+ DeepSeek（余额，CNY 优先）────────────────
+// ── fetcher：z.ai（5h + 周窗口）+ DeepSeek（余额，CNY 优先）─────────────────
 
 /**
- * z.ai 监控端点 limits 解析（2026-09 实测响应）：
- * TOKENS_LIMIT unit 3=小时档(number=5→5h)。气泡只展示 5h 窗口，
- * 其余条目（周档/CREDIT_LIMIT/TIME_LIMIT）忽略。
+ * z.ai 监控端点 limits 解析（2026-11-20 实测响应）：
+ * TOKENS_LIMIT unit 3=小时档(number=5→5h)；unit 6=周档(number=1→1 周，
+ * percentage 45, nextResetTime=ms 时间戳)。5h + 周档各取一个窗口。
+ * 另有 TIME_LIMIT（unit 5，search/zread 等工具类条目）忽略；
+ * 兜底：显式周档缺失时取 reset 距今最远（>24h，视为非小时档）的其余条目标 "周"。
  */
-function parseZaiFiveHour(data) {
+function parseZaiWindows(data) {
   const limits = data && data.data && Array.isArray(data.data.limits) ? data.data.limits : null;
-  if (limits === null) return null;
+  if (limits === null) return [];
   const fiveHour = [];
+  const weekly = [];
   const rest = [];
   for (const item of limits) {
     if (item === null || typeof item !== "object") continue;
     if (item.type !== "TOKENS_LIMIT" && item.type !== "CREDIT_LIMIT") continue;
     const pct = item.percentage !== undefined ? clampPct(item.percentage) : null;
     if (pct === null) continue;
+    const resetsAt = resetIso(item.nextResetTime);
     const unit = Number(item.unit);
-    if (unit === 3) fiveHour.push({ label: "5h", percent: pct, resetsAt: resetIso(item.nextResetTime) });
-    else if (!Number.isFinite(unit)) rest.push({ percent: pct, resetsAt: resetIso(item.nextResetTime), ms: Number(item.nextResetTime) });
+    const num = Number(item.number);
+    let hours = NaN;
+    if (unit === 3 && Number.isFinite(num)) hours = num;
+    else if (unit === 4 && Number.isFinite(num)) hours = num * 24;
+    else if (unit === 6) hours = 168; // 周档（2026-11 实测 unit6×number1）
+    if (hours === 5) fiveHour.push({ label: "5h", percent: pct, resetsAt });
+    else if (hours === 168) weekly.push({ label: "周", percent: pct, resetsAt });
+    else rest.push({ percent: pct, resetsAt, ms: Number(item.nextResetTime) });
   }
-  if (fiveHour.length > 0) return fiveHour[0];
-  rest.sort((a, b) => (a.ms > 0 ? a.ms : 0) - (b.ms > 0 ? b.ms : 0));
-  if (rest.length > 0) return { label: "5h", percent: rest[0].percent, resetsAt: rest[0].resetsAt };
-  return null;
+  if (weekly.length === 0) {
+    // 周档兜底：reset 距今最远且明显超出小时档（>24h）的条目视为周档
+    let best = null;
+    let bestMs = -1;
+    const now = Date.now();
+    for (const item of rest) {
+      const ms = item.ms > 1e12 ? item.ms : item.ms > 0 ? item.ms * 1000 : 0;
+      if (ms - now > 24 * 3600 * 1000 && ms > bestMs) { bestMs = ms; best = item; }
+    }
+    if (best !== null) {
+      weekly.push({ label: "周", percent: best.percent, resetsAt: best.resetsAt });
+      rest.splice(rest.indexOf(best), 1);
+    }
+  }
+  if (fiveHour.length === 0 && rest.length > 0) {
+    // 5h 兜底（原逻辑）：reset 最近的非周条目
+    const sorted = rest.slice().sort((a, b) => (a.ms > 0 ? a.ms : 0) - (b.ms > 0 ? b.ms : 0));
+    fiveHour.push({ label: "5h", percent: sorted[0].percent, resetsAt: sorted[0].resetsAt });
+  }
+  return [...fiveHour, ...weekly];
 }
 
 async function fetchZai(ctx, key) {
@@ -192,8 +219,10 @@ async function fetchZai(ctx, key) {
     try {
       const data = await httpGet(ctx, url, ["Authorization: Bearer " + key]);
       throwIfBodyAuthError(data, "z.ai ");
-      const quota = parseZaiFiveHour(data);
-      if (quota !== null) return { quota, windows: [quota], balanceText: null };
+      const windows = parseZaiWindows(data);
+      if (windows.length > 0) {
+        return { quota: windows[0], windows, balanceText: null };
+      }
       lastError = new Error("响应中无可解析的配额窗口");
     } catch (err) {
       lastError = err;
@@ -251,6 +280,11 @@ async function fetchOpenDesign(ctx, key) {
     const label = num(w.durationSeconds) === 18000 ? "5h" : num(w.durationSeconds) === 604800 ? "7d" : "窗口";
     windows.push({ label, percent, resetsAt: resetIso(w.resetsAt) });
   }
+  // 展示顺序固定 5h 在前（测试与卡片文字行都依赖该顺序）
+  windows.sort((a, b) => {
+    const rank = (x) => (x.label === "5h" ? 0 : x.label === "7d" ? 1 : 2);
+    return rank(a) - rank(b);
+  });
   for (const w of windows) { if (w.label === "5h") { quota = w; break; } }
   if (quota === null && windows.length > 0) quota = windows[0];
   if (quota === null && balanceText === null) throw new Error("响应中无余额与额度窗口");

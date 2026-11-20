@@ -1,15 +1,15 @@
 # dsh-whale-bubble 🐳
 
-右下角悬浮鲸鱼小气泡插件：hover 显示当前工作区、Z.ai（智谱 GLM Coding Plan）5h 配额窗口、DeepSeek 余额与 OpenDesign 钱包 + 套餐窗口。数据面从 [dsh-fee-panel](../dsh-fee-panel/) 复制裁剪，独立路由与存储，与 fee-panel 互不依赖。
+右下角悬浮鲸鱼小气泡插件：hover 显示当前工作区、DeepSeek 余额（置顶）、Z.ai（智谱 GLM Coding Plan）5h+周配额窗口、OpenDesign 套餐 5h+周窗口。数据面从 [dsh-fee-panel](../dsh-fee-panel/) 复制裁剪，独立路由与存储，与 fee-panel 互不依赖。
 
 ## 交互
 
 | 操作 | 行为 |
 | --- | --- |
 | 收起态 | 38px 圆形半透明鲸鱼图标（55% 透明度，hover 实体化） |
-| 鼠标移入 | 悬浮卡片：工作区名/目录、Z.ai 5h 窗口（百分比 + 重置时间）、DeepSeek 余额、OpenDesign（钱包 + 5h 窗口） |
+| 鼠标移入 | 悬浮卡片：工作区名/目录、DS 余额（第一行）、Z.ai 与 OD 各一行（5h/周用量合并文字 + 双进度条左右并排，左 5h 右 周，右侧小字为 5h 重置时间） |
 | 点击图标 | 强制刷新全部数据（图标外圈转圈动画） |
-| 卡片右上 ⚙ | 打开内联配置弹层（双 Key 输入 + 显示开关，✕ 关闭） |
+| 卡片右上 ⚙ | 打开内联配置弹层（三 Key 输入 + 显示开关，✕ 关闭） |
 | 刷新失败 | 图标右下红点角标，卡片底部错误行 |
 | 未配置 Key | 图标降饱和（灰度） |
 
@@ -17,7 +17,7 @@
 
 ## 配置
 
-- Z.ai Key：优先 `WHALE_ZAI_API_KEY`，回落 `ZAI_API_KEY` / `BIGMODEL_API_KEY`（仅取 5h 窗口）
+- Z.ai Key：优先 `WHALE_ZAI_API_KEY`，回落 `ZAI_API_KEY` / `BIGMODEL_API_KEY`（取 5h + 周窗口）
 - DeepSeek Key：优先 `WHALE_DEEPSEEK_API_KEY`，回落 `DEEPSEEK_API_KEY`
 - OpenDesign：优先 `WHALE_OPENDESIGN_API_KEY`，回落 `OPENDESIGN_KEY`（默认）/ `OPENDESIGN_CONTROL_KEY` / `VELA_CONTROL_KEY`
   - 必须是 **Control Key**（`vela_*`，来自 OpenDesign Cloud 或本机 `vela login` → `~/.amr/config.json` 的 `profiles.prod.controlKey`）。`sk-amr-*` 推理 Key 是另一个凭据，读账单会 401。
