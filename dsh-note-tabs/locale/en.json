@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Note tabs",
+    "description": "Save any answer as a Markdown note: a bookmark action under each reply, a hover card of this workspace's recent notes in the sidebar, and a grouped notes page with editing, search, and send-to-composer.",
+    "detail": "docs/DETAIL.md"
+  }
+}

@@ -1,0 +1,1153 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>便签 · 高保真设计稿</title>
+<style>
+/* ── 主题 token（沿用 DSH 的 --dsw-alias-* 命名，实机直接映射） ───────────── */
+:root{
+  --dsw-alias-bg-base:#f7f5f0;
+  --dsw-alias-bg-layer:#fffdf9;
+  --dsw-alias-bg-layer-hover:#f2eee6;
+  --dsw-alias-bg-sunken:#efece5;
+  --dsw-alias-label-primary:#211f1b;
+  --dsw-alias-label-secondary:#6d6a62;
+  --dsw-alias-label-tertiary:#9a968c;
+  --dsw-alias-border-l1:#e7e3da;
+  --dsw-alias-border-l2:#d6d1c5;
+  --dsw-alias-brand-primary:#3f6d5a;
+  --dsw-alias-brand-soft:#e8efe9;
+  --dsw-alias-state-error:#b4453a;
+  --dsw-alias-state-warn:#a8792a;
+  --dsw-shadow-pop:0 18px 46px rgba(38,32,20,.16),0 2px 8px rgba(38,32,20,.07);
+  --serif:"Iowan Old Style","Palatino Linotype","Source Han Serif SC","Noto Serif SC","Songti SC",Georgia,serif;
+  --sans:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  --mono:"SFMono-Regular",Consolas,"Cascadia Mono",monospace;
+}
+html[data-theme="dark"]{
+  --dsw-alias-bg-base:#141413;
+  --dsw-alias-bg-layer:#1c1b1a;
+  --dsw-alias-bg-layer-hover:#262523;
+  --dsw-alias-bg-sunken:#232220;
+  --dsw-alias-label-primary:#ece9e2;
+  --dsw-alias-label-secondary:#a09c92;
+  --dsw-alias-label-tertiary:#75716a;
+  --dsw-alias-border-l1:#302e2b;
+  --dsw-alias-border-l2:#413e39;
+  --dsw-alias-brand-primary:#7fb49a;
+  --dsw-alias-brand-soft:#20302a;
+  --dsw-alias-state-error:#e08074;
+  --dsw-alias-state-warn:#d6a75c;
+  --dsw-shadow-pop:0 20px 50px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);
+  font:14px/1.55 var(--sans);-webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+::selection{background:var(--dsw-alias-brand-soft);color:var(--dsw-alias-label-primary)}
+
+/* ── 布局骨架 ─────────────────────────────────────────────────────────────── */
+.app{display:flex;height:100vh;overflow:hidden}
+
+/* 图标栏：sidebar.panellist 的位置 */
+.rail{
+  flex:none;width:52px;display:flex;flex-direction:column;align-items:center;
+  gap:6px;padding:12px 0;border-right:1px solid var(--dsw-alias-border-l1);
+  background:var(--dsw-alias-bg-base);
+}
+.rail .mark{
+  width:26px;height:26px;border-radius:8px;display:grid;place-items:center;margin-bottom:10px;
+  background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer);
+  font:600 13px/1 var(--serif);
+}
+.rail-btn{
+  width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+  color:var(--dsw-alias-label-tertiary);position:relative;transition:background .14s,color .14s;
+}
+.rail-btn:hover{background:var(--dsw-alias-bg-layer-hover);color:var(--dsw-alias-label-secondary)}
+.rail-btn[aria-current="true"]{color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-soft)}
+.rail-btn svg{width:17px;height:17px;display:block}
+.rail-btn .cnt{
+  position:absolute;top:1px;right:0;min-width:14px;height:14px;padding:0 3px;border-radius:7px;
+  background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-layer);
+  font:600 9px/14px var(--sans);text-align:center;
+}
+.rail .sp{flex:1}
+
+/* 侧栏 */
+.sidebar{
+  flex:none;width:256px;display:flex;flex-direction:column;
+  border-right:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-base);
+}
+.sb-head{padding:14px 14px 8px;display:flex;align-items:center;gap:8px}
+.sb-title{font:600 13px/1.2 var(--sans);letter-spacing:.01em}
+.sb-new{
+  margin:2px 12px 10px;padding:7px 10px;border-radius:8px;display:flex;align-items:center;gap:7px;
+  border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font-size:12.5px;
+}
+.sb-new:hover{background:var(--dsw-alias-bg-layer-hover)}
+.sb-scroll{flex:1;overflow:auto;padding:0 8px 12px}
+.ws{margin-top:10px}
+.ws-h{
+  display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:6px;
+  color:var(--dsw-alias-label-tertiary);font:500 11px/1.4 var(--sans);letter-spacing:.04em;
+  text-transform:none;
+}
+.ws-h:hover{background:var(--dsw-alias-bg-layer-hover)}
+.sess{
+  display:flex;align-items:baseline;gap:6px;padding:6px 8px;border-radius:7px;cursor:pointer;
+  color:var(--dsw-alias-label-secondary);font-size:12.5px;
+}
+.sess:hover{background:var(--dsw-alias-bg-layer-hover);color:var(--dsw-alias-label-primary)}
+.sess[aria-current="true"]{background:var(--dsw-alias-bg-layer-hover);color:var(--dsw-alias-label-primary);font-weight:500}
+.sess .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sess .tm{font-size:10.5px;color:var(--dsw-alias-label-tertiary);flex:none}
+.sb-foot{border-top:1px solid var(--dsw-alias-border-l1);padding:8px}
+.sb-foot .sess{font-size:12.5px}
+
+/* 主列 */
+.main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base)}
+.m-head{
+  flex:none;height:48px;display:flex;align-items:center;gap:10px;padding:0 18px;
+  border-bottom:1px solid var(--dsw-alias-border-l1);
+}
+.m-head .crumb{font-size:12.5px;color:var(--dsw-alias-label-tertiary)}
+.m-head .ttl{font:600 13px/1.3 var(--sans)}
+.m-head .sp{flex:1}
+.icon-btn{
+  width:28px;height:28px;border-radius:7px;display:grid;place-items:center;
+  color:var(--dsw-alias-label-secondary);
+}
+.icon-btn:hover{background:var(--dsw-alias-bg-layer-hover);color:var(--dsw-alias-label-primary)}
+.icon-btn svg{width:15px;height:15px;display:block}
+
+/* ── 对话视图 ─────────────────────────────────────────────────────────────── */
+.conv{flex:1;overflow:auto;padding:26px 0 8px}
+.conv-in{max-width:760px;margin:0 auto;padding:0 28px}
+.msg{margin-bottom:26px}
+.msg.user{margin-bottom:22px}
+.msg.user .bubble{
+  background:var(--dsw-alias-bg-sunken);border:1px solid var(--dsw-alias-border-l1);
+  border-radius:10px;padding:10px 13px;font-size:13.5px;
+  width:fit-content;max-width:100%;white-space:pre-wrap;
+}
+.role{
+  font:500 10.5px/1 var(--sans);letter-spacing:.09em;text-transform:uppercase;
+  color:var(--dsw-alias-label-tertiary);margin-bottom:8px;
+}
+.md{font-size:14px;line-height:1.68}
+.md > :first-child{margin-top:0}
+.md > :last-child{margin-bottom:0}
+.md p{margin:0 0 .85em}
+.md h1,.md h2,.md h3,.md h4{font-family:var(--serif);font-weight:600;letter-spacing:.005em;margin:1.3em 0 .5em;line-height:1.32}
+.md h1{font-size:20px}.md h2{font-size:17.5px}.md h3{font-size:15.5px}.md h4{font-size:14px}
+.md code{
+  font-family:var(--mono);font-size:.86em;background:var(--dsw-alias-bg-sunken);
+  border:1px solid var(--dsw-alias-border-l1);border-radius:5px;padding:.1em .34em;
+}
+.md pre{
+  margin:0 0 .9em;padding:11px 13px;border-radius:9px;overflow:auto;
+  background:var(--dsw-alias-bg-sunken);border:1px solid var(--dsw-alias-border-l1);
+}
+.md pre code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.6}
+.md blockquote{
+  margin:0 0 .9em;padding:2px 0 2px 13px;border-left:2px solid var(--dsw-alias-border-l2);
+  color:var(--dsw-alias-label-secondary);
+}
+.md ul,.md ol{margin:0 0 .9em;padding-left:1.35em}
+.md li{margin:.22em 0}
+.md hr{border:none;border-top:1px solid var(--dsw-alias-border-l1);margin:1.3em 0}
+.md a{color:var(--dsw-alias-brand-primary);text-decoration:none;border-bottom:1px solid color-mix(in oklab,var(--dsw-alias-brand-primary) 40%,transparent)}
+.md strong{font-weight:650}
+.md del{color:var(--dsw-alias-label-tertiary)}
+
+/* 回答下方的操作行（conversation.chat.assistant-actions） */
+.actions{display:flex;align-items:center;gap:2px;margin-top:9px;margin-left:-5px}
+.act{
+  width:26px;height:26px;border-radius:6px;display:grid;place-items:center;
+  color:var(--dsw-alias-label-tertiary);transition:color .13s,background .13s;
+}
+.act:hover{background:var(--dsw-alias-bg-layer-hover);color:var(--dsw-alias-label-primary)}
+.act svg{width:14px;height:14px;display:block}
+.act[aria-pressed="true"]{color:var(--dsw-alias-brand-primary)}
+.act[aria-pressed="true"]:hover{background:var(--dsw-alias-brand-soft)}
+
+/* 输入框 */
+.composer{flex:none;padding:10px 0 16px}
+.composer-in{max-width:760px;margin:0 auto;padding:0 28px}
+.card{
+  border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer);
+  box-shadow:0 1px 2px rgba(38,32,20,.04);padding:10px 12px 8px;
+}
+.card textarea{
+  width:100%;border:none;outline:none;resize:none;background:none;color:inherit;
+  font:13.5px/1.6 var(--sans);min-height:44px;display:block;
+}
+.card-foot{display:flex;align-items:center;gap:6px;margin-top:4px}
+.card-foot .sp{flex:1}
+.send{
+  width:28px;height:28px;border-radius:8px;display:grid;place-items:center;
+  background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-layer);
+}
+.send svg{width:15px;height:15px}
+
+/* ── 便签详情页（main keyed slot） ────────────────────────────────────────── */
+.notes{flex:1;overflow:auto}
+.notes-in{max-width:840px;margin:0 auto;padding:20px 32px 80px}
+.n-head{display:flex;align-items:baseline;gap:12px;margin-bottom:2px}
+.n-title{font:600 23px/1.2 var(--serif);letter-spacing:.01em}
+.n-count{font:400 12.5px/1 var(--sans);color:var(--dsw-alias-label-tertiary)}
+.n-sub{
+  margin:4px 0 12px;font-size:12px;color:var(--dsw-alias-label-secondary);
+}
+.tools{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.search{
+  flex:1;display:flex;align-items:center;gap:7px;padding:0 10px;height:32px;border-radius:8px;
+  border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer);
+}
+.search svg{width:14px;height:14px;color:var(--dsw-alias-label-tertiary);flex:none}
+.search input{flex:1;border:none;outline:none;background:none;font:13px var(--sans);color:inherit;min-width:0}
+.seg{display:flex;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;overflow:hidden;flex:none}
+.seg button{padding:0 11px;height:30px;font-size:12.5px;color:var(--dsw-alias-label-secondary)}
+.seg button[aria-pressed="true"]{background:var(--dsw-alias-bg-sunken);color:var(--dsw-alias-label-primary);font-weight:500}
+
+.group{margin-bottom:14px}
+.group-h{
+  display:flex;align-items:baseline;gap:9px;padding-bottom:5px;margin-bottom:1px;
+  border-bottom:1px solid var(--dsw-alias-border-l2);
+}
+.group-h .g-t{font:600 12px/1.3 var(--sans);letter-spacing:.055em;color:var(--dsw-alias-label-secondary)}
+.group-h .g-n{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.group-h .sp{flex:1}
+
+/* 便签卡片 */
+.n-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;margin-top:10px}
+.note{
+  display:flex;flex-direction:column;gap:0;
+  border:1px solid var(--dsw-alias-border-l1);border-radius:10px;
+  background:var(--dsw-alias-bg-layer);
+  padding:11px 12px 8px;transition:border-color .14s,box-shadow .14s;
+}
+.note:hover{border-color:var(--dsw-alias-border-l2);box-shadow:0 2px 10px rgba(38,32,20,.06)}
+html[data-theme="dark"] .note:hover{box-shadow:0 2px 12px rgba(0,0,0,.3)}
+/* 便签只有正文，没有标题：预览直接取正文前几行 */
+.n-note-x{
+  margin:0;font-size:12.5px;line-height:1.6;color:var(--dsw-alias-label-primary);
+  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;
+  white-space:pre-wrap;flex:1;
+}
+.n-foot{
+  display:flex;align-items:center;gap:4px;margin-top:9px;padding-top:6px;
+  border-top:1px solid var(--dsw-alias-border-l1);
+}
+.n-src{
+  flex:1;min-width:0;font-size:10.5px;color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.n-acts{display:flex;gap:1px;flex:none}
+.n-acts .act{width:26px;height:26px}
+.n-acts .act svg{width:14px;height:14px}
+.n-acts .act.danger:hover{color:var(--dsw-alias-state-error)}
+
+/* 内联编辑 */
+.n-edit{flex:1;min-width:0}
+.note.is-editing{border-color:var(--dsw-alias-brand-primary)}
+.n-edit textarea{
+  width:100%;min-height:96px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;
+  padding:9px 11px;font:12.5px/1.62 var(--mono);color:inherit;background:var(--dsw-alias-bg-layer);
+  outline:none;resize:vertical;
+}
+.n-edit textarea:focus{border-color:var(--dsw-alias-brand-primary)}
+.n-edit .row{display:flex;gap:8px;justify-content:flex-end;margin-top:7px}
+.btn{
+  padding:5px 13px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2);
+  font-size:12.5px;color:var(--dsw-alias-label-primary);
+}
+.btn:hover{background:var(--dsw-alias-bg-layer-hover)}
+.btn.primary{background:var(--dsw-alias-brand-primary);border-color:transparent;color:var(--dsw-alias-bg-layer)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.ghost{border-color:transparent;color:var(--dsw-alias-label-secondary)}
+
+.empty{
+  padding:56px 0;text-align:center;color:var(--dsw-alias-label-tertiary);
+}
+.empty .e-t{font:600 15px/1.4 var(--serif);color:var(--dsw-alias-label-secondary);margin-bottom:5px}
+.empty .e-d{font-size:12.5px}
+
+/* ── hover 浮层（向左栏图标右侧展开） ────────────────────────────────────── */
+.hovercard{
+  position:fixed;z-index:60;width:352px;max-height:min(62vh,520px);
+  display:flex;flex-direction:column;
+  background:var(--dsw-alias-bg-layer);border:1px solid var(--dsw-alias-border-l2);
+  border-radius:13px;box-shadow:var(--dsw-shadow-pop);
+  opacity:0;transform:translateX(-6px) scale(.985);transform-origin:left top;
+  transition:opacity .13s ease-out,transform .13s ease-out;
+  pointer-events:none;
+}
+.hovercard[data-open="true"]{opacity:1;transform:none;pointer-events:auto}
+@starting-style{.hovercard[data-open="true"]{opacity:0;transform:translateX(-6px) scale(.985)}}
+@media (prefers-reduced-motion:reduce){
+  .hovercard{transition:none}
+}
+.hc-head{
+  padding:11px 13px 9px;border-bottom:1px solid var(--dsw-alias-border-l1);
+  display:flex;align-items:baseline;gap:8px;flex:none;
+}
+.hc-h{font:600 12.5px/1.3 var(--sans);letter-spacing:.03em}
+.hc-ws{
+  font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.hc-scroll{overflow:auto;padding:5px 6px 6px}
+.hc-row{
+  display:flex;align-items:flex-start;gap:9px;padding:8px 8px;border-radius:8px;cursor:default;
+}
+.hc-row:hover{background:var(--dsw-alias-bg-layer-hover)}
+.hc-row .hc-main{flex:1;min-width:0}
+.hc-row .hc-t{
+  font-size:12.5px;line-height:1.5;color:var(--dsw-alias-label-primary);margin:0;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;
+}
+.hc-row .hc-m{
+  font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.hc-send{
+  flex:none;width:26px;height:26px;border-radius:6px;display:grid;place-items:center;
+  color:var(--dsw-alias-label-tertiary);opacity:0;transition:opacity .12s,color .12s,background .12s;
+}
+.hc-row:hover .hc-send,.hc-send:focus-visible{opacity:1}
+.hc-send:hover{background:var(--dsw-alias-brand-soft);color:var(--dsw-alias-brand-primary)}
+.hc-send svg{width:14px;height:14px}
+.hc-foot{
+  flex:none;border-top:1px solid var(--dsw-alias-border-l1);padding:7px 8px;
+  display:flex;align-items:center;gap:6px;
+}
+.hc-all{
+  width:100%;padding:6px 8px;border-radius:7px;display:flex;align-items:center;justify-content:space-between;
+  font-size:12px;color:var(--dsw-alias-label-secondary);
+}
+.hc-all:hover{background:var(--dsw-alias-bg-layer-hover);color:var(--dsw-alias-label-primary)}
+.hc-all kbd{
+  font:500 10.5px/1 var(--sans);color:var(--dsw-alias-label-tertiary);
+  border:1px solid var(--dsw-alias-border-l1);border-radius:4px;padding:2px 4px;
+}
+.hc-empty{padding:22px 12px;text-align:center;font-size:12px;color:var(--dsw-alias-label-tertiary)}
+
+/* ── 设置弹层 ─────────────────────────────────────────────────────────────── */
+.scrim{position:fixed;inset:0;background:rgba(24,20,12,.34);z-index:70;display:none}
+.scrim[data-open="true"]{display:block}
+.sheet{
+  position:fixed;z-index:71;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:min(680px,calc(100vw - 40px));background:var(--dsw-alias-bg-layer);
+  border:1px solid var(--dsw-alias-border-l2);border-radius:14px;box-shadow:var(--dsw-shadow-pop);
+  padding:16px 18px 14px;display:none;
+}
+.sheet[data-open="true"]{display:block}
+.sheet-body{display:grid;grid-template-columns:1fr 208px;gap:20px;align-items:start}
+.sheet h3{font:600 15px/1.3 var(--serif);margin:0 0 3px}
+.sheet .s-sub{font-size:12px;color:var(--dsw-alias-label-tertiary);margin:0 0 10px}
+/* 设置页的实时预览：把便签卡与浮层行摆出来，改动立刻可见 */
+.sheet-preview{
+  border-left:1px solid var(--dsw-alias-border-l1);padding-left:18px;
+}
+.pv-label{
+  font:500 10px/1 var(--sans);letter-spacing:.09em;text-transform:uppercase;
+  color:var(--dsw-alias-label-tertiary);margin-bottom:9px;
+}
+.pv-card{
+  border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer);
+  padding:8px 9px;font-size:11px;line-height:1.55;color:var(--dsw-alias-label-primary);
+}
+.pv-card .pv-x{
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;white-space:pre-wrap;
+  color:var(--dsw-alias-label-primary);height:calc(1.45em * 4);
+}
+.pv-card .pv-foot{
+  display:flex;align-items:center;gap:3px;margin-top:7px;padding-top:5px;
+  border-top:1px solid var(--dsw-alias-border-l1);
+}
+.pv-card .pv-src{flex:1;font-size:9.5px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv-card .pv-acts{display:flex;gap:0;color:var(--dsw-alias-label-tertiary)}
+.pv-card .pv-acts svg{width:11px;height:11px;display:block;margin-left:4px}
+.pv-hover{
+  margin-top:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;
+  background:var(--dsw-alias-bg-layer);box-shadow:0 6px 18px rgba(38,32,20,.10);
+  overflow:hidden;
+}
+.pv-hover .pv-h{
+  padding:6px 8px;border-bottom:1px solid var(--dsw-alias-border-l1);
+  font-size:9.5px;color:var(--dsw-alias-label-tertiary);
+  display:flex;justify-content:space-between;gap:6px;
+}
+.pv-hover .pv-r{
+  padding:5px 8px;font-size:10.5px;line-height:1.45;color:var(--dsw-alias-label-secondary);
+  border-bottom:1px solid var(--dsw-alias-border-l1);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.pv-hover .pv-r:last-child{border-bottom:none}
+.pv-hint{margin-top:8px;font-size:10px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
+.srow{display:flex;align-items:center;gap:14px;padding:10px 0;border-top:1px solid var(--dsw-alias-border-l1)}
+.srow .s-l{flex:1;min-width:0}
+.srow .s-n{font-size:13px}
+.srow .s-d{font-size:11.5px;color:var(--dsw-alias-label-tertiary);margin-top:2px}
+.srow input[type="number"]{
+  width:64px;padding:4px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;
+  background:transparent;color:inherit;font:13px var(--sans);outline:none;
+}
+.sw{width:34px;height:19px;border-radius:10px;background:var(--dsw-alias-border-l2);position:relative;flex:none;transition:background .16s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;transition:translate .16s}
+.sw[aria-checked="true"]{background:var(--dsw-alias-brand-primary)}
+.sw[aria-checked="true"]::after{translate:15px 0}
+.sheet select{
+  padding:4px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;
+  background:transparent;color:inherit;font:13px var(--sans);outline:none;
+}
+.sheet .s-foot{display:flex;justify-content:flex-end;margin-top:14px}
+
+/* ── Toast ────────────────────────────────────────────────────────────────── */
+.toasts{position:fixed;bottom:22px;left:50%;translate:-50% 0;z-index:80;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{
+  display:flex;align-items:center;gap:12px;padding:8px 10px 8px 14px;border-radius:9px;
+  background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer);font-size:12.5px;
+  box-shadow:0 10px 30px rgba(0,0,0,.22);
+}
+.toast button{color:inherit;font-weight:600;font-size:12.5px;text-decoration:underline;text-underline-offset:2px}
+.toast .t-x{opacity:.6;text-decoration:none;font-weight:400}
+
+/* ── 演示控制条（仅 mock） ────────────────────────────────────────────────── */
+.demo{
+  position:fixed;top:8px;right:12px;z-index:90;display:flex;gap:4px;align-items:center;
+  background:var(--dsw-alias-bg-layer);border:1px solid var(--dsw-alias-border-l1);
+  border-radius:999px;padding:3px 8px 3px 10px;font-size:11px;color:var(--dsw-alias-label-tertiary);
+  box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
+.demo b{font-weight:600;color:var(--dsw-alias-label-secondary)}
+.demo button{padding:3px 7px;border-radius:6px;font-size:11px;color:var(--dsw-alias-label-secondary)}
+.demo button:hover{background:var(--dsw-alias-bg-layer-hover)}
+.demo .sep{width:1px;height:12px;background:var(--dsw-alias-border-l1)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* 截图态：禁用过渡，避免抓到动画中间帧 */
+html[data-noanim="true"] *{transition:none!important;animation:none!important}
+</style>
+</head>
+<body>
+<div class="demo">
+  <b>设计稿</b>
+  <span class="sep"></span>
+  <button id="d-hover">悬浮窗</button>
+  <button id="d-notes">详情页</button>
+  <button id="d-sheet">设置</button>
+  <button id="d-theme">明暗</button>
+  <button id="d-reset">重置</button>
+</div>
+
+<div class="app">
+  <!-- 图标栏 -->
+  <aside class="rail" aria-label="面板">
+    <div class="mark" aria-hidden="true">便</div>
+    <button class="rail-btn" aria-label="插件" title="插件">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 3h4v3a2 2 0 0 0 4 0V3h3v4a2 2 0 0 0 0 4h-3v10h-4v-3a2 2 0 0 0-4 0v3H3V11h3a2 2 0 0 0 0-4H3V3h7z" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="rail-btn" aria-label="定时任务" title="定时任务">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2" stroke-linecap="round"/></svg>
+    </button>
+    <button class="rail-btn" id="rail-notes" aria-label="便签" title="便签" aria-describedby="note-hover">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H17a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6.5A1.5 1.5 0 0 1 5 19.5z"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4" stroke-linecap="round"/></svg>
+      <span class="cnt" id="rail-count">6</span>
+    </button>
+    <div class="sp"></div>
+    <button class="rail-btn" aria-label="设置" title="设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.2M12 18.8V21M4.2 7.5l1.9 1.1M17.9 15.4l1.9 1.1M4.2 16.5l1.9-1.1M17.9 8.6l1.9-1.1" stroke-linecap="round"/></svg>
+    </button>
+  </aside>
+
+  <!-- 侧栏 -->
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="sb-title">DeepSeek Harness</div>
+    </div>
+    <button class="sb-new">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
+      新建会话
+    </button>
+    <div class="sb-scroll" id="sb-list"></div>
+    <div class="sb-foot">
+      <div class="sess"><span class="t">设置</span></div>
+    </div>
+  </aside>
+
+  <!-- 主列：会话或便签详情 -->
+  <main class="main" id="main"></main>
+</div>
+
+<!-- hover 浮层 -->
+<div class="hovercard" id="note-hover" role="dialog" aria-label="当前工作区便签">
+  <div class="hc-head">
+    <span class="hc-h">当前工作区</span>
+    <span class="hc-ws" id="hc-ws">—</span>
+  </div>
+  <div class="hc-scroll" id="hc-list"></div>
+  <div class="hc-foot">
+    <button class="hc-all" id="hc-all"><span>查看全部便签</span><kbd>进入详情</kbd></button>
+  </div>
+</div>
+
+<!-- 设置弹层 -->
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="便签设置">
+  <div class="sheet-body">
+    <div class="sheet-form">
+      <h3>便签设置</h3>
+      <p class="s-sub">三项偏好，写入 profile 的插件配置</p>
+      <div class="srow">
+        <div class="s-l"><div class="s-n">悬浮框条数</div><div class="s-d">侧栏图标 hover 时列出最近几条</div></div>
+        <input type="number" id="set-count" min="3" max="30" step="1" value="10" />
+      </div>
+      <div class="srow">
+        <div class="s-l"><div class="s-n">启用悬浮框</div><div class="s-d">关闭后 hover 不弹出，仅点击进入详情</div></div>
+        <button class="sw" id="set-hover" role="switch" aria-checked="true" aria-label="启用悬浮框"></button>
+      </div>
+      <div class="srow">
+        <div class="s-l"><div class="s-n">默认视图</div><div class="s-d">详情页打开时的排列方式</div></div>
+        <select id="set-view"><option value="grouped">按工作区分组</option><option value="flat">全部平铺</option></select>
+      </div>
+    </div>
+    <div class="sheet-preview">
+      <div class="pv-label">实时预览</div>
+      <div class="pv-card" id="pv-card" aria-hidden="true"></div>
+      <div class="pv-hover" id="pv-hover"></div>
+      <div class="pv-hint" id="pv-hint"></div>
+    </div>
+  </div>
+  <div class="s-foot"><button class="btn primary" id="sheet-close">完成</button></div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+/* ──────────────────────────────────────────────────────────────────────────
+   演示数据（真实插件里由 host 侧 notes.json 提供）
+   ────────────────────────────────────────────────────────────────────────── */
+const WORKSPACES = [
+  { id: 'w-dsh',  title: 'dsh-plugin-daix' },
+  { id: 'w-www',  title: 'acme-web' },
+  { id: 'w-doc',  title: 'notes' },
+];
+const SESSIONS = {
+  's-1': { title: '便签插件设计',        ws: 'w-dsh' },
+  's-2': { title: '插槽契约排查',        ws: 'w-dsh' },
+  's-3': { title: 'Design token 迁移',   ws: 'w-www' },
+  's-4': { title: '构建脚本整理',        ws: 'w-www' },
+  's-5': { title: '周报草稿',            ws: 'w-doc' },
+};
+const CURRENT_SESSION = 's-1';
+
+/* 便签只存正文 + 归属 id + 时间（按 Q1/Q15/Q21 定案） */
+const SEED = [
+  { id:'n1', ws:'w-dsh', session:'s-1', at: Date.now() - 4*60e3, text:
+`## host 插件与 client 面的分工
+
+**host 面**只做两件事：把便签落盘、给 client 提供读写接口。**client 面**负责所有渲染。
+
+- host：\`apply(ctx)\` 里注册 \`host.call\` 处理函数，单文件 \`notes.json\`，写临时文件再 rename，保证原子性
+- client：三条插槽注册，互不复用组件
+
+> 关键约束：client 不直连文件系统，所有写操作走一次 host 调用再刷新本地快照。` },
+  { id:'n2', ws:'w-dsh', session:'s-2', at: Date.now() - 26*60e3, text:
+`assistant-actions 的 owner props 只有 \`messageId\`，拿不到正文。
+
+要正文得**自己按 messageId 去 chat 快照里捞**：
+
+\`\`\`ts
+const node = useChat(chat => chat.nodes.get(messageIdWithKind))
+\`\`\`
+
+如果捞不到，退回「已收藏时用存下来的正文，未收藏时禁用按钮」。` },
+  { id:'n3', ws:'w-dsh', session:'s-1', at: Date.now() - 3*3600e3, text:
+`设计便签数据的形状时，**不要把展示用的字符串存进数据**。
+
+工作区名会改、会话会被删。存 \`workspaceId\` 与 \`sessionId\`，展示时现查；查不到就显示「未知工作区」，而不是把旧名字刻进文件。` },
+  { id:'n4', ws:'w-www', session:'s-3', at: Date.now() - 5*3600e3, text:
+`CSS 主题 token 迁移的三条检查：
+
+1. 所有颜色改走 \`--dsw-alias-*\`，字面色只留给插画
+2. 深色模式不写第二套组件，只换 token 值
+3. \`color-mix()\` 用来做半透明派生色，避免手工维护两套 alpha` },
+  { id:'n5', ws:'w-www', session:'s-4', at: Date.now() - 2*86400e3, text:
+`构建脚本应该**幂等**：重复跑不产生多余提交。
+
+改法：把「有变化才写文件」的判断提前到渲染之前，用内容哈希比较，而不是先写再 diff。` },
+  { id:'n6', ws:'w-doc', session:'s-5', at: Date.now() - 6*86400e3, text:
+`本周只推进了一件事：把便签插件的插槽方案定下来。
+
+下周先做高保真设计稿，确认视觉与交互再写代码——避免返工。` },
+];
+
+const state = {
+  notes: structuredClone(SEED),
+  savedHashes: new Set(),
+  view: 'grouped',
+  query: '',
+  editing: null,
+  hoverEnabled: true,
+  hoverCount: 10,
+  main: 'conversation',   // conversation | notes
+};
+
+/* 内容哈希去重（Q22：按正文内容哈希，而不是 messageId） */
+function hash(text) {
+  let h = 2166136261;
+  const s = text.replace(/\s+/g, ' ').trim().toLowerCase();
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+for (const n of state.notes) state.savedHashes.add(hash(n.text));
+
+/* ── 迷你 Markdown 渲染（仅 mock 用；实机沿用 DSH 的渲染层） ─────────────── */
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function inline(s) {
+  let t = esc(s);
+  t = t.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`);
+  t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  t = t.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+  t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer noopener">$1</a>');
+  return t;
+}
+function renderMd(src) {
+  const lines = src.replace(/\r\n?/g, '\n').split('\n');
+  const out = [];
+  let i = 0;
+  const closeList = (tag) => { if (tag) out.push(`</${tag}>`); };
+  let list = null;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^```/.test(line)) {
+      closeList(list); list = null;
+      const lang = line.slice(3).trim();
+      i += 1;
+      const body = [];
+      while (i < lines.length && !/^```/.test(lines[i])) { body.push(lines[i]); i += 1; }
+      i += 1;
+      out.push(`<pre data-lang="${esc(lang)}"><code>${esc(body.join('\n'))}</code></pre>`);
+      continue;
+    }
+    if (/^\s*$/.test(line)) { closeList(list); list = null; i += 1; continue; }
+    if (/^#{1,4}\s+/.test(line)) {
+      closeList(list); list = null;
+      const m = /^(#{1,4})\s+(.*)$/.exec(line);
+      out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`);
+      i += 1; continue;
+    }
+    if (/^(-{3,}|\*{3,})\s*$/.test(line)) { closeList(list); list = null; out.push('<hr>'); i += 1; continue; }
+    if (/^>\s?/.test(line)) {
+      closeList(list); list = null;
+      const body = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) { body.push(lines[i].replace(/^>\s?/, '')); i += 1; }
+      out.push(`<blockquote>${body.map(inline).join('<br>')}</blockquote>`);
+      continue;
+    }
+    const ul = /^\s*[-*+]\s+/.test(line);
+    const ol = /^\s*\d+[.)]\s+/.test(line);
+    if (ul || ol) {
+      const tag = ul ? 'ul' : 'ol';
+      if (list !== tag) { closeList(list); out.push(`<${tag}>`); list = tag; }
+      out.push(`<li>${inline(line.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, ''))}</li>`);
+      i += 1; continue;
+    }
+    closeList(list); list = null;
+    const para = [];
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !/^(#{1,4}\s|```|>|\s*[-*+]\s|\s*\d+[.)]\s)/.test(lines[i])) {
+      para.push(lines[i]); i += 1;
+    }
+    out.push(`<p>${para.map(inline).join('<br>')}</p>`);
+  }
+  closeList(list);
+  return out.join('\n');
+}
+
+/* 纯文本化（列表标题、摘要用） */
+function plain(text) {
+  return text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+[.)]\s+/gm, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/\*\*([^*]*)\*\*/g, '$1')
+    .replace(/\*([^*]*)\*/g, '$1')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/~~([^~]*)~~/g, '$1')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+function noteExcerpt(note) {
+  const p = plain(note.text).split('\n').map((s) => s.trim()).filter(Boolean);
+  const joined = p.join(' ');
+  return joined.length > 150 ? joined.slice(0, 150) + '…' : joined;
+}
+function relTime(at) {
+  const d = Date.now() - at;
+  if (d < 60e3) return '刚刚';
+  if (d < 3600e3) return `${Math.floor(d / 60e3)} 分钟前`;
+  if (d < 86400e3) return `${Math.floor(d / 3600e3)} 小时前`;
+  if (d < 7 * 86400e3) return `${Math.floor(d / 86400e3)} 天前`;
+  return new Date(at).toLocaleDateString('zh-CN');
+}
+const wsTitle = (id) => (WORKSPACES.find((w) => w.id === id) || {}).title || '未知工作区';
+const sessTitle = (id) => (SESSIONS[id] || {}).title || '未知会话';
+const currentWs = () => (SESSIONS[CURRENT_SESSION] || {}).ws;
+
+/* ── 图标 ─────────────────────────────────────────────────────────────────── */
+const ICON = {
+  bookmark: (fill) => `<svg viewBox="0 0 24 24" fill="${fill ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M6.5 4h11a1 1 0 0 1 1 1v15l-6.5-4.2L5.5 20V5a1 1 0 0 1 1-1z"/></svg>`,
+  copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5.5A1.5 1.5 0 0 0 13.5 4H5.5A1.5 1.5 0 0 0 4 5.5v8A1.5 1.5 0 0 0 5.5 15"/></svg>`,
+  branch: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="6" r="2.2"/><circle cx="7" cy="18" r="2.2"/><circle cx="17" cy="12" r="2.2"/><path d="M7 8.2v7.6M9.2 6h4.3a1.3 1.3 0 0 1 1.3 1.3v2.5M9.2 18h4.3a1.3 1.3 0 0 0 1.3-1.3v-2.5"/></svg>`,
+  send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12.5 5.5 19 12l-6.5 6.5"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 6.5h15M9.5 6.5V4.6c0-.6.5-1.1 1.1-1.1h2.8c.6 0 1.1.5 1.1 1.1v1.9M6.5 6.5l.8 12.2c.05.9.8 1.6 1.7 1.6h6c.9 0 1.65-.7 1.7-1.6l.8-12.2"/></svg>`,
+  pencil: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4.5 19.5h4l10-10a2.1 2.1 0 0 0-3-3l-10 10z"/><path d="M13.5 6.5l4 4"/></svg>`,
+  search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>`,
+  gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="2.8"/><path d="M12 3.5v2M12 18.5v2M4.9 7.6l1.7 1M17.4 15.4l1.7 1M4.9 16.4l1.7-1M17.4 8.6l1.7-1" stroke-linecap="round"/></svg>`,
+};
+
+/* ── 侧栏 ─────────────────────────────────────────────────────────────────── */
+function renderSidebar() {
+  const host = document.getElementById('sb-list');
+  const byWs = new Map();
+  for (const [id, s] of Object.entries(SESSIONS)) {
+    if (!byWs.has(s.ws)) byWs.set(s.ws, []);
+    byWs.get(s.ws).push(id);
+  }
+  const parts = [];
+  for (const ws of WORKSPACES) {
+    const list = byWs.get(ws.id) || [];
+    if (list.length === 0) continue;
+    parts.push(`<div class="ws"><div class="ws-h">${esc(ws.title)}</div>`);
+    for (const sid of list) {
+      parts.push(`<div class="sess"${sid === CURRENT_SESSION ? ' aria-current="true"' : ''} data-sess="${sid}">
+        <span class="t">${esc(SESSIONS[sid].title)}</span></div>`);
+    }
+    parts.push('</div>');
+  }
+  host.innerHTML = parts.join('');
+}
+
+/* ── 会话视图 ─────────────────────────────────────────────────────────────── */
+const ANSWERS = [
+  { md: SEED[0].text },
+  { md: SEED[1].text },
+];
+function renderConversation() {
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="m-head">
+      <span class="crumb">dsh-plugin-daix</span>
+      <span class="ttl">便签插件设计</span>
+      <span class="sp"></span>
+      <button class="icon-btn" aria-label="更多">${ICON.gear}</button>
+    </div>
+    <div class="conv"><div class="conv-in">
+      <div class="msg user"><div class="role">你</div>
+        <div class="bubble">我想开发一个便签插件，用于记录提示词回答。每轮回答下方提供图标，点击可收藏。</div>
+      </div>
+      ${ANSWERS.map((a, idx) => `
+        <div class="msg" data-answer="${idx}">
+          <div class="role">DeepSeek</div>
+          <div class="md">${renderMd(a.md)}</div>
+          <div class="actions">
+            <button class="act" aria-label="复制">${ICON.copy}</button>
+            <button class="act act-save" data-answer="${idx}" aria-label="收藏为便签" aria-pressed="false" title="收藏为便签">${ICON.bookmark(false)}</button>
+            <button class="act" aria-label="分支">${ICON.branch}</button>
+          </div>
+        </div>`).join('')}
+    </div></div>
+    <div class="composer"><div class="composer-in"><div class="card">
+      <textarea id="draft" rows="2" placeholder="给代理发消息…">继续设计详情页。</textarea>
+      <div class="card-foot"><span class="sp"></span>
+        <button class="send" aria-label="发送">${ICON.send}</button>
+      </div>
+    </div></div></div>`;
+
+  // 已收藏状态回填（按内容哈希）
+  for (const btn of main.querySelectorAll('.act-save')) {
+    const answer = ANSWERS[Number(btn.dataset.answer)];
+    const saved = state.savedHashes.has(hash(answer.md));
+    btn.setAttribute('aria-pressed', String(saved));
+    btn.innerHTML = ICON.bookmark(saved);
+    btn.setAttribute('aria-label', saved ? '取消收藏' : '收藏为便签');
+  }
+  for (const btn of main.querySelectorAll('.act-save')) {
+    btn.addEventListener('click', () => toggleSave(Number(btn.dataset.answer)));
+  }
+}
+
+function toggleSave(index) {
+  const answer = ANSWERS[index];
+  const h = hash(answer.md);
+  if (state.savedHashes.has(h)) {
+    const id = state.notes.find((n) => hash(n.text) === h).id;
+    state.notes = state.notes.filter((n) => n.id !== id);
+    state.savedHashes.delete(h);
+    toast('已从便签移除', { label: '撤销', run: () => {
+      state.notes.push({ id, ws: currentWs(), session: CURRENT_SESSION, at: Date.now(), text: answer.md });
+      state.savedHashes.add(h); refresh();
+    }});
+  } else {
+    state.notes.unshift({ id: 'n' + Math.random().toString(36).slice(2, 8), ws: currentWs(), session: CURRENT_SESSION, at: Date.now(), text: answer.md });
+    state.savedHashes.add(h);
+    toast('已收藏到便签');
+  }
+  refresh();
+}
+
+/* ── 便签详情页 ───────────────────────────────────────────────────────────── */
+function filteredNotes() {
+  const q = state.query.trim().toLowerCase();
+  if (!q) return state.notes;
+  return state.notes.filter((n) => plain(n.text).toLowerCase().includes(q));
+}
+function renderNotes() {
+  const main = document.getElementById('main');
+  const all = [...filteredNotes()].sort((a, b) => b.at - a.at);
+  const total = state.notes.length;
+
+  const rowsHtml = (items) => items.map((n) => {
+    if (state.editing === n.id) {
+      return `<div class="note is-editing" data-note="${n.id}">
+        <div class="n-edit">
+          <textarea data-edit="${n.id}" spellcheck="false">${esc(n.text)}</textarea>
+          <div class="row">
+            <button class="btn ghost" data-act="cancel" data-note="${n.id}">取消</button>
+            <button class="btn primary" data-act="save" data-note="${n.id}">保存</button>
+          </div>
+        </div>
+      </div>`;
+    }
+    return `<div class="note" data-note="${n.id}">
+      <p class="n-note-x">${esc(noteExcerpt(n))}</p>
+      <div class="n-foot">
+        <span class="n-src">${esc(sessTitle(n.session))}</span>
+        <div class="n-acts">
+          <button class="act" data-act="send" data-note="${n.id}" aria-label="发送到输入框" title="发送到输入框">${ICON.send}</button>
+          <button class="act" data-act="edit" data-note="${n.id}" aria-label="编辑" title="编辑">${ICON.pencil}</button>
+          <button class="act danger" data-act="del" data-note="${n.id}" aria-label="删除" title="删除">${ICON.trash}</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  let body = '';
+  if (all.length === 0) {
+    body = `<div class="empty"><div class="e-t">${state.query ? '没有匹配的便签' : '还没有便签'}</div>
+      <div class="e-d">${state.query ? '换个关键词试试' : '在任意一条回答下方点击书签图标即可收藏'}</div></div>`;
+  } else if (state.view === 'flat' || state.query) {
+    body = `<div class="group"><div class="group-h"><span class="g-t">全部</span><span class="g-n">${all.length}</span><span class="sp"></span></div><div class="n-grid">${rowsHtml(all)}</div></div>`;
+  } else {
+    const groups = new Map();
+    for (const n of all) {
+      if (!groups.has(n.ws)) groups.set(n.ws, []);
+      groups.get(n.ws).push(n);
+    }
+    body = [...groups.entries()].map(([ws, items]) => `
+      <div class="group">
+        <div class="group-h"><span class="g-t">${esc(wsTitle(ws))}</span><span class="g-n">${items.length}</span><span class="sp"></span></div>
+        <div class="n-grid">${rowsHtml(items)}</div>
+      </div>`).join('');
+  }
+
+  main.innerHTML = `
+    <div class="m-head">
+      <span class="crumb">插件</span><span class="ttl">便签</span>
+      <span class="sp"></span>
+      <button class="icon-btn" id="open-settings" aria-label="便签设置" title="便签设置">${ICON.gear}</button>
+    </div>
+    <div class="notes"><div class="notes-in">
+      <div class="n-head"><h1 class="n-title">便签</h1><span class="n-count">${total} 条</span></div>
+      <p class="n-sub">收藏自各轮回答的 Markdown 片段。点击发送即追加到当前会话的输入框。</p>
+      <div class="tools">
+        <label class="search">${ICON.search}
+          <input id="q" type="search" placeholder="搜索便签正文…" value="${esc(state.query)}" />
+        </label>
+        <div class="seg" role="group" aria-label="排列方式">
+          <button data-view="grouped" aria-pressed="${state.view === 'grouped'}">按工作区</button>
+          <button data-view="flat" aria-pressed="${state.view === 'flat'}">全部</button>
+        </div>
+      </div>
+      ${body}
+    </div></div>`;
+
+  main.querySelector('#q').addEventListener('input', (e) => {
+    state.query = e.target.value;
+    const pos = e.target.selectionStart;
+    renderNotes();
+    const q = document.getElementById('q');
+    q.focus(); q.setSelectionRange(pos, pos);
+  });
+  for (const b of main.querySelectorAll('[data-view]')) {
+    b.addEventListener('click', () => { state.view = b.dataset.view; renderNotes(); });
+  }
+  main.querySelector('#open-settings').addEventListener('click', openSheet);
+  for (const b of main.querySelectorAll('[data-act]')) {
+    b.addEventListener('click', () => {
+      const id = b.dataset.note;
+      const act = b.dataset.act;
+      if (act === 'send') sendToDraft(id);
+      else if (act === 'edit') { state.editing = id; renderNotes(); }
+      else if (act === 'cancel') { state.editing = null; renderNotes(); }
+      else if (act === 'save') {
+        const ta = main.querySelector(`[data-edit="${id}"]`);
+        const note = state.notes.find((n) => n.id === id);
+        state.savedHashes.delete(hash(note.text));
+        note.text = ta.value;
+        state.savedHashes.add(hash(note.text));
+        state.editing = null;
+        toast('便签已更新');
+        renderNotes();
+      } else if (act === 'del') deleteNote(id);
+    });
+  }
+}
+
+function deleteNote(id) {
+  const idx = state.notes.findIndex((n) => n.id === id);
+  if (idx < 0) return;
+  const [removed] = state.notes.splice(idx, 1);
+  state.savedHashes.delete(hash(removed.text));
+  refresh();
+  toast('便签已删除', { label: '撤销', run: () => {
+    state.notes.splice(idx, 0, removed);
+    state.savedHashes.add(hash(removed.text));
+    refresh();
+  }});
+}
+
+function sendToDraft(id) {
+  const note = state.notes.find((n) => n.id === id);
+  if (!note) return;
+  state.main = 'conversation';
+  render();
+  const draft = document.getElementById('draft');
+  const prev = draft.value.trimEnd();
+  draft.value = prev ? `${prev}\n\n${note.text}` : note.text;
+  draft.focus();
+  draft.setSelectionRange(draft.value.length, draft.value.length);
+  toast('已追加到输入框');
+}
+
+/* ── hover 浮层 ───────────────────────────────────────────────────────────── */
+function renderHover() {
+  const ws = currentWs();
+  const inWs = state.notes.filter((n) => n.ws === ws);
+  const list = (inWs.length ? inWs : state.notes)
+    .slice()
+    .sort((a, b) => b.at - a.at)
+    .slice(0, state.hoverCount);
+  const fallback = inWs.length === 0;
+  document.getElementById('hc-ws').textContent = fallback
+    ? `全部便签（${wsTitle(ws)} 暂无）`
+    : `${wsTitle(ws)} · ${inWs.length} 条`;
+
+  const host = document.getElementById('hc-list');
+  if (list.length === 0) {
+    host.innerHTML = `<div class="hc-empty">还没有便签。在回答下方点书签图标收藏。</div>`;
+    return;
+  }
+  host.innerHTML = list.map((n) => `
+    <div class="hc-row" data-note="${n.id}">
+      <div class="hc-main">
+        <p class="hc-t">${esc(noteExcerpt(n))}</p>
+        <div class="hc-m">${esc(sessTitle(n.session))} · ${relTime(n.at)}</div>
+      </div>
+      <button class="hc-send" data-hc-send="${n.id}" aria-label="发送到输入框" title="发送到输入框">${ICON.send}</button>
+    </div>`).join('');
+  for (const b of host.querySelectorAll('[data-hc-send]')) {
+    b.addEventListener('click', (e) => { e.stopPropagation(); hideHover(); sendToDraft(b.dataset.hcSend); });
+  }
+}
+
+const hoverEl = document.getElementById('note-hover');
+const railNotes = document.getElementById('rail-notes');
+let hoverTimer = null;
+let hideTimer = null;
+
+function showHover() {
+  if (!state.hoverEnabled) return;
+  renderHover();
+  const r = railNotes.getBoundingClientRect();
+  const top = Math.min(r.top + 2, window.innerHeight - 180);
+  hoverEl.style.top = Math.max(8, top) + 'px';
+  hoverEl.style.left = (r.right + 10) + 'px';
+  hoverEl.dataset.open = 'true';
+  railNotes.setAttribute('aria-expanded', 'true');
+}
+function hideHover() {
+  hoverEl.dataset.open = 'false';
+  railNotes.setAttribute('aria-expanded', 'false');
+}
+railNotes.addEventListener('pointerenter', () => {
+  clearTimeout(hideTimer);
+  clearTimeout(hoverTimer);
+  hoverTimer = setTimeout(showHover, 260);
+});
+railNotes.addEventListener('pointerleave', () => {
+  clearTimeout(hoverTimer);
+  hideTimer = setTimeout(hideHover, 320);
+});
+railNotes.addEventListener('focus', showHover);
+railNotes.addEventListener('blur', () => {
+  if (!hoverEl.dataset.open) return;
+  hideTimer = setTimeout(hideHover, 200);
+});
+hoverEl.addEventListener('pointerenter', () => clearTimeout(hideTimer));
+hoverEl.addEventListener('pointerleave', () => { hideTimer = setTimeout(hideHover, 260); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { hideHover(); closeSheet(); } });
+
+railNotes.addEventListener('click', () => {
+  hideHover();
+  state.main = 'notes';
+  render();
+});
+document.getElementById('hc-all').addEventListener('click', () => {
+  hideHover();
+  state.main = 'notes';
+  render();
+});
+
+/* ── 设置弹层 ─────────────────────────────────────────────────────────────── */
+const scrim = document.getElementById('scrim');
+const sheet = document.getElementById('sheet');
+
+function renderSheetPreview() {
+  const sample = state.notes[0];
+  const card = document.getElementById('pv-card');
+  card.innerHTML = sample ? `
+    <div class="pv-x">${esc(noteExcerpt(sample))}</div>
+    <div class="pv-foot">
+      <span class="pv-src">${esc(sessTitle(sample.session))}</span>
+      <span class="pv-acts">${ICON.send}${ICON.pencil}${ICON.trash}</span>
+    </div>` : `<div class="pv-x">暂无便签</div>`;
+
+  const rows = Math.max(1, Math.min(4, state.hoverCount));
+  const sampleRows = state.notes.slice(0, rows);
+  const hoverEl = document.getElementById('pv-hover');
+  hoverEl.innerHTML = `
+    <div class="pv-h"><span>当前工作区</span><span>${state.hoverEnabled ? 'hover 弹出' : '已关闭'}</span></div>
+    ${sampleRows.map((n) => `<div class="pv-r">${esc(noteExcerpt(n).slice(0, 20))}…</div>`).join('')}
+    ${state.hoverCount > 4 ? `<div class="pv-r">…共 ${state.hoverCount} 条</div>` : ''}`;
+  hoverEl.style.opacity = state.hoverEnabled ? '1' : '.42';
+
+  document.getElementById('pv-hint').textContent = state.hoverEnabled
+    ? `侧栏图标 hover 时向右弹出，最多 ${state.hoverCount} 条`
+    : '悬浮框已关闭，点击侧栏图标直接进入详情页';
+}
+
+function openSheet() {
+  document.getElementById('set-count').value = state.hoverCount;
+  document.getElementById('set-hover').setAttribute('aria-checked', String(state.hoverEnabled));
+  document.getElementById('set-view').value = state.view;
+  renderSheetPreview();
+  scrim.dataset.open = 'true';
+  sheet.dataset.open = 'true';
+}
+function closeSheet() {
+  scrim.dataset.open = 'false';
+  sheet.dataset.open = 'false';
+}
+document.getElementById('sheet-close').addEventListener('click', closeSheet);
+scrim.addEventListener('click', closeSheet);
+document.getElementById('set-count').addEventListener('input', (e) => {
+  const v = Math.min(30, Math.max(3, Number(e.target.value) || 10));
+  state.hoverCount = v;
+  renderSheetPreview();
+});
+document.getElementById('set-hover').addEventListener('click', (e) => {
+  state.hoverEnabled = !state.hoverEnabled;
+  e.currentTarget.setAttribute('aria-checked', String(state.hoverEnabled));
+  renderSheetPreview();
+});
+document.getElementById('set-view').addEventListener('change', (e) => {
+  state.view = e.target.value;
+  if (state.main === 'notes') renderNotes();
+});
+
+/* ── Toast ────────────────────────────────────────────────────────────────── */
+function toast(text, action) {
+  const host = document.getElementById('toasts');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = `<span>${esc(text)}</span>`;
+  if (action) {
+    const b = document.createElement('button');
+    b.textContent = action.label;
+    b.addEventListener('click', () => { action.run(); el.remove(); });
+    el.appendChild(b);
+  }
+  const x = document.createElement('button');
+  x.className = 't-x'; x.textContent = '✕'; x.setAttribute('aria-label', '关闭');
+  x.addEventListener('click', () => el.remove());
+  el.appendChild(x);
+  host.appendChild(el);
+  setTimeout(() => el.remove(), 5200);
+}
+
+/* ── 总渲染 ───────────────────────────────────────────────────────────────── */
+function refresh() {
+  document.getElementById('rail-count').textContent = String(state.notes.length);
+  if (state.main === 'notes') renderNotes();
+  else renderConversation();
+  renderHover();
+  railNotes.setAttribute('aria-current', String(state.main === 'notes'));
+}
+function render() { refresh(); }
+
+document.getElementById('d-theme').addEventListener('click', () => {
+  const h = document.documentElement;
+  h.dataset.theme = h.dataset.theme === 'dark' ? 'light' : 'dark';
+});
+document.getElementById('d-hover').addEventListener('click', () => {
+  if (hoverEl.dataset.open === 'true') { hideHover(); return; }
+  railNotes.setAttribute('aria-expanded', 'true');
+  showHover();
+});
+document.getElementById('d-notes').addEventListener('click', () => {
+  hideHover(); state.main = 'notes'; render();
+});
+document.getElementById('d-sheet').addEventListener('click', () => { openSheet(); });
+document.getElementById('d-reset').addEventListener('click', () => {
+  state.notes = structuredClone(SEED);
+  state.savedHashes = new Set(state.notes.map((n) => hash(n.text)));
+  state.query = ''; state.editing = null; state.main = 'conversation';
+  refresh();
+});
+
+/* 截图/演示用深链：#notes 详情页、#hover 浮层、#edit 编辑态、#dark 深色、#flat 平铺 */
+const hashSet = new Set(location.hash.replace(/^#/, '').split(',').filter(Boolean));
+if (hashSet.has('notes')) state.main = 'notes';
+if (hashSet.has('edit')) { state.main = 'notes'; state.editing = 'n1'; }
+if (hashSet.has('dark')) document.documentElement.dataset.theme = 'dark';
+if (hashSet.has('flat') || hashSet.has('notes')) { state.main = 'notes'; if (hashSet.has('flat')) state.view = 'flat'; }
+
+renderSidebar();
+railNotes.setAttribute('aria-expanded', 'false');
+refresh();
+
+if (hashSet.has('hover')) {
+  document.documentElement.dataset.noanim = 'true';
+  showHover();
+  hoverEl.dataset.open = 'true';
+}
+if (hashSet.has('sheet')) {
+  state.main = 'notes';
+  refresh();
+  openSheet();
+}
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@
 | 插件包 | 功能 |
 |---|---|
 | [`dsh-skill-manager`](./dsh-skill-manager) | 设置页里管理全局/项目技能的启用与禁用（写 SKILL.md frontmatter），支持切换工作区管理其项目技能 |
+| [`dsh-note-tabs`](./dsh-note-tabs) | 把每轮回答收藏成 Markdown 便签：回答下收藏按钮、侧栏悬浮窗、按工作区分组的详情页与设置页 |
 | [`dsh-lite-preset`](./dsh-lite-preset) | Agent 模式 `lite`（精简）：只保留 文件操作（read/write/edit/read_image/glob/grep）、命令执行（pwsh/bash）、网络（web_search/web_fetch）、`ask_user_question`、`skill` 五组工具 |
 
 ## 仓库结构

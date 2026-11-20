@@ -8,3 +8,4 @@ node_modules/
 *.log
 dsh-claude-style
 .tmp-asar/
+.facts/
