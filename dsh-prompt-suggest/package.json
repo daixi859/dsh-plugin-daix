@@ -1,6 +1,6 @@
 {
   "name": "dsh-prompt-suggest",
-  "description": "输入框底部按钮：一键生成中文提示词建议；已有草稿时润色草稿并在可编辑卡片中确认后替换。",
+  "description": "输入框底部按钮：一键生成下一条指令建议；已有草稿时润色草稿并在可编辑卡片中确认后替换。模型与思考强度可在设置页配置。",
   "version": "0.1.0",
   "private": true,
   "type": "module",

@@ -23,6 +23,8 @@ window.__ModuleLoader__.load({
     var EDITOR_ID = "prompt-suggest-editor";
 
     // ── 样式 ────────────────────────────────────────────────────────────────
+    // 注意：ps-err 已经是按钮的「失败红点」修饰类，设置页的错误段落用 ps-set-err，
+    // 不要复用同一个类名承载两种语义。
     var css = `
 .ps-btn{flex:none;width:28px;height:28px;border:none;background:transparent;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-secondary,#8a8a85);position:relative;padding:0;transition:color .15s,background .15s}
 .ps-btn:hover{color:var(--dsw-alias-brand-primary,#4a7dff);background:var(--dsw-alias-border-l1,rgba(0,0,0,.06))}
@@ -46,6 +48,16 @@ window.__ModuleLoader__.load({
 .ps-btn2.ps-primary{background:var(--dsw-alias-brand-primary,#4a7dff);border-color:transparent;color:#fff}
 .ps-btn2.ps-primary:hover{filter:brightness(1.06)}
 .ps-btn2:disabled{opacity:.55;cursor:default}
+.ps-set{display:flex;flex-direction:column;gap:14px;padding:4px 2px;color:var(--dsw-alias-label-primary,#1a1a1a);font-family:inherit}
+.ps-set-sub{margin:0;font-size:11.5px;line-height:1.6;color:var(--dsw-alias-label-secondary,#8a8a85)}
+.ps-row{display:flex;align-items:flex-start;gap:14px}
+.ps-row-l{flex:1;min-width:0}
+.ps-row-n{font-size:12.5px;font-weight:600}
+.ps-row-d{margin-top:2px;font-size:11px;line-height:1.55;color:var(--dsw-alias-label-secondary,#8a8a85)}
+.ps-row select{flex:none;min-width:200px;max-width:52%;font:inherit;font-size:12px;padding:5px 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.14));background:var(--dsw-alias-bg-layer,#fff);color:var(--dsw-alias-label-primary,#1a1a1a)}
+.ps-row select:disabled{opacity:.55;cursor:default}
+.ps-note{margin:0;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary,#8a8a85)}
+.ps-set-err{margin:0;font-size:11px;line-height:1.6;color:var(--dsw-alias-state-error,#d9483b)}
 `;
     var tagId = "dsh-prompt-suggest/prompt-suggest.css";
     if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
@@ -91,24 +103,29 @@ window.__ModuleLoader__.load({
     }
 
     // ── 数据通道 ────────────────────────────────────────────────────────────
-    function unwrap(res) {
-      return res.text().then(function (bodyText) {
-        var j;
-        try { j = JSON.parse(bodyText); } catch (e) {
-          throw new Error("服务响应不是 JSON（HTTP " + res.status + "）");
-        }
-        if (!res.ok || !j || j.ok !== true) {
-          throw new Error((j && j.error) || ("请求失败（HTTP " + res.status + "）"));
-        }
-        return j;
+    // 唯一的 JSON 通道：解析 + 校验 ok，失败时把宿主给的中文错误原样带出。
+    // 生成、设置、模型目录三条路由共用它，避免同一段解析逻辑写三遍。
+    function requestJson(url, init) {
+      return fetch(url, init).then(function (res) {
+        return res.text().then(function (bodyText) {
+          var j;
+          try { j = JSON.parse(bodyText); } catch (e) {
+            throw new Error("服务响应不是 JSON（HTTP " + res.status + "）");
+          }
+          if (!res.ok || !j || j.ok !== true) {
+            throw new Error((j && j.error) || ("请求失败（HTTP " + res.status + "）"));
+          }
+          return j;
+        });
       });
     }
     function apiGenerate(payload) {
-      return fetch("/plugins/prompt-suggest/generate", {
+      return requestJson("/plugins/prompt-suggest/generate", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
-      }).then(unwrap);
+      });
     }
 
     // ── 图标 ────────────────────────────────────────────────────────────────
@@ -176,8 +193,9 @@ window.__ModuleLoader__.load({
           draft: draft,
           provider: currentRoute ? currentRoute.provider : '',
           model: currentRoute ? currentRoute.model : '',
-          // 建议模式不透传推理档位：推理 token 会吃掉较小的输出上限
-          reasoningEffort: polish && currentRoute ? currentRoute.reasoningEffort : undefined,
+          // 档位一律交给 host 决定（设置 > 会话），client 不再单边过滤：
+          // 两处都过滤会让「设为关闭却仍在思考」这类问题无处可查。
+          reasoningEffort: currentRoute ? currentRoute.reasoningEffort : undefined,
         })
           .then(function (r) {
             if (typeof r.text !== "string" || r.text.length === 0) throw new Error("返回内容为空");
@@ -289,6 +307,174 @@ window.__ModuleLoader__.load({
             }, "替换草稿"))));
     }
 
+    // ── 设置页（settings.section）────────────────────────────────────────────
+    // 两个下拉：用哪个模型、用哪个思考强度。留空 = 跟随会话 / 模型默认。
+    // 思考档位由模型自己公布（DeepSeek 是 off/low/high/max），不给没有推理能力
+    // 的模型显示这一项，避免选出会被 prepareCall 拒绝的值。
+    var SETTINGS_ROUTE = "/plugins/prompt-suggest/settings";
+    var MODELS_ROUTE = "/plugins/prompt-suggest/models";
+
+    // 宿主公布的是 Off / Low / High / Max 这类英文名。界面其余文案都是中文，
+    // 直接透传会中英混排，所以这里做一层显示名映射；未知档位才回落原名。
+    var EFFORT_LABELS = { off: "关闭", low: "低", medium: "中", high: "高", max: "最高" };
+    function effortLabel(effort) {
+      var known = EFFORT_LABELS[effort.id];
+      return typeof known === "string" ? known : (effort.name || effort.id);
+    }
+
+    function SettingsSection() {
+      var settingsHook = React.useState(null);
+      var settings = settingsHook[0];
+      var setSettings = settingsHook[1];
+      var modelsHook = React.useState(null);
+      var models = modelsHook[0];
+      var setModels = modelsHook[1];
+      var errorHook = React.useState(null);
+      var error = errorHook[0];
+      var setError = errorHook[1];
+      var savingHook = React.useState(false);
+      var saving = savingHook[0];
+      var setSaving = savingHook[1];
+
+      React.useEffect(function () {
+        var alive = true;
+        requestJson(SETTINGS_ROUTE, { credentials: "same-origin" })
+          .then(function (body) { if (alive) setSettings(body.settings); })
+          .catch(function (e) { if (alive) setError(e.message); });
+        requestJson(MODELS_ROUTE, { credentials: "same-origin" })
+          .then(function (body) { if (alive) setModels(body.groups || []); })
+          .catch(function (e) { if (alive) setModels([]); });
+        return function () { alive = false; };
+      }, []);
+
+      var save = function (patch) {
+        setSaving(true);
+        setError(null);
+        requestJson(SETTINGS_ROUTE, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(patch),
+        })
+          .then(function (body) { setSettings(body.settings); })
+          .catch(function (e) { setError(e.message); })
+          .then(function () { setSaving(false); });
+      };
+
+      if (!settings) {
+        return React.createElement("div", { className: "ps-set" },
+          React.createElement("p", { className: "ps-set-sub" }, error || "正在读取设置…"));
+      }
+
+      // 选中模型公布的档位。选「跟随当前会话」时没有具体模型，退化成所有渠道档位的并集：
+      // 否则这一项只剩「模型默认」，用户在想跟随会话时根本选不了档位。
+      // 并集只决定「列哪些选项」，真正是否支持由 host 侧按实际模型再过滤一次。
+      var selected = null;
+      if (models) {
+        for (var g = 0; g < models.length; g += 1) {
+          var group = models[g];
+          if (group.id !== settings.provider) continue;
+          for (var m = 0; m < group.models.length; m += 1) {
+            if (group.models[m].id === settings.model) { selected = group.models[m]; break; }
+          }
+        }
+      }
+      var efforts = null;
+      if (selected) {
+        efforts = selected.efforts;
+      } else if (models) {
+        var union = {};
+        for (var ug = 0; ug < models.length; ug += 1) {
+          var ugModels = models[ug].models || [];
+          for (var um = 0; um < ugModels.length; um += 1) {
+            var umEfforts = ugModels[um].efforts || [];
+            for (var ue = 0; ue < umEfforts.length; ue += 1) {
+              if (!Object.prototype.hasOwnProperty.call(union, umEfforts[ue].id)) union[umEfforts[ue].id] = umEfforts[ue];
+            }
+          }
+        }
+        efforts = Object.keys(union).map(function (id) { return union[id]; });
+      }
+      var effortHidden = Array.isArray(efforts) && efforts.length === 0;
+      // 存着的档位可能来自另一个模型（换了模型后常见），或模型改版后下线。
+      // 不补一条 option 的话，select 的 value 匹配不到任何 option，浏览器会显示
+      // 第一项「模型默认」——界面看起来是默认，磁盘里却还是旧值，属于静默不一致。
+      var effortKnown = efforts === null
+        || efforts.some(function (effort) { return effort.id === settings.reasoningEffort; });
+      var effortStale = !effortKnown && settings.reasoningEffort !== "";
+
+      var modelValue = settings.provider && settings.model
+        ? settings.provider + "\u0000" + settings.model
+        : "";
+      // 已保存的模型可能来自已卸载的渠道，或已经从目录里下线。
+      // 不补一条 option，浏览器会回落到首项「跟随当前会话」——界面说跟随，磁盘里却还是旧模型。
+      var modelKnown = models === null || modelValue === "" || (models || []).some(function (group) {
+        return group.id === settings.provider && (group.models || []).some(function (model) {
+          return model.id === settings.model;
+        });
+      });
+      var modelStale = !modelKnown && modelValue !== "";
+
+      return React.createElement("div", { className: "ps-set" },
+        React.createElement("p", { className: "ps-set-sub" },
+          "这里设置的是提示词建议按钮自己用的模型与思考强度，只影响这个按钮，不影响正常对话。"),
+        React.createElement("div", { className: "ps-row" },
+          React.createElement("div", { className: "ps-row-l" },
+            React.createElement("div", { className: "ps-row-n" }, "用哪个模型"),
+            React.createElement("div", { className: "ps-row-d" }, "留空则跟随当前会话正在用的模型。")),
+          React.createElement("select", {
+            value: modelValue,
+            disabled: saving || !models,
+            "aria-label": "用哪个模型",
+            onChange: function (event) {
+              var raw = event.target.value;
+              if (raw === "") { save({ provider: "", model: "" }); return; }
+              var split = raw.indexOf("\u0000");
+              save({ provider: raw.slice(0, split), model: raw.slice(split + 1) });
+            },
+          },
+            React.createElement("option", { value: "" }, "跟随当前会话"),
+            modelStale
+              ? React.createElement("option", { value: modelValue },
+                  settings.model + "（已不可用）")
+              : null,
+            (models || []).map(function (group) {
+              return React.createElement("optgroup", { key: group.id, label: group.name },
+                group.models.map(function (model) {
+                  return React.createElement("option", {
+                    key: group.id + "\u0000" + model.id,
+                    value: group.id + "\u0000" + model.id,
+                  }, model.name);
+                }));
+            }))),
+        React.createElement("div", { className: "ps-row" },
+          React.createElement("div", { className: "ps-row-l" },
+            React.createElement("div", { className: "ps-row-n" }, "思考强度"),
+            React.createElement("div", { className: "ps-row-d" },
+              effortHidden
+                ? "所选模型不支持调节思考强度，这一项不生效。"
+                : effortStale
+                  ? "已保存的档位不在该模型公布的列表内，实际会按模型默认执行。选一个档位即可修正。"
+                  : "润色时使用。选到最低档可以更快、更省 token；生成建议始终不启用思考。")),
+          React.createElement("select", {
+            value: settings.reasoningEffort,
+            disabled: saving || effortHidden,
+            "aria-label": "思考强度",
+            onChange: function (event) { save({ reasoningEffort: event.target.value }); },
+          },
+            React.createElement("option", { value: "" }, "模型默认"),
+            effortStale
+              ? React.createElement("option", { value: settings.reasoningEffort },
+                  settings.reasoningEffort + "（模型不支持）")
+              : null,
+            (efforts || []).map(function (effort) {
+              return React.createElement("option", { key: effort.id, value: effort.id }, effortLabel(effort));
+            }))),
+        error !== null ? React.createElement("p", { className: "ps-set-err" }, error) : null,
+        React.createElement("p", { className: "ps-note" },
+          "保存后立即生效，无需重启。"));
+    }
+
     // ── 插件入口 ────────────────────────────────────────────────────────────
     var inject = ["slots"];
 
@@ -305,6 +491,12 @@ window.__ModuleLoader__.load({
         return slots.register(
           { name: "shell.overlay", id: EDITOR_ID, order: 95, label: "润色编辑卡片" },
           function () { return React.createElement(EditCard, null); }
+        );
+      });
+      slots.inject("settings.section", function () {
+        return slots.register(
+          { name: "settings.section", id: "prompt-suggest", order: 55, label: "提示词建议" },
+          function () { return React.createElement(SettingsSection, null); }
         );
       });
     }
