@@ -155,6 +155,22 @@ test('settings 收敛越界值并落盘', async () => {
   } finally { await h.dispose(); }
 });
 
+test('settings 可保存入口位置，包含空数组', async () => {
+  const h = await harness();
+  try {
+    const initial = await h.call({ op: 'state' });
+    assert.deepEqual(initial.body.store.settings.entryPositions, ['sidebar', 'header']);
+
+    const headerOnly = await h.call({ op: 'settings', payload: { patch: { entryPositions: ['header'] } } });
+    assert.deepEqual(headerOnly.body.store.settings.entryPositions, ['header']);
+
+    const none = await h.call({ op: 'settings', payload: { patch: { entryPositions: [] } } });
+    assert.deepEqual(none.body.store.settings.entryPositions, []);
+    const onDisk = JSON.parse(await readFile(h.notesPath, 'utf8'));
+    assert.deepEqual(onDisk.settings.entryPositions, []);
+  } finally { await h.dispose(); }
+});
+
 test('坏 JSON 文件回退空存储并留 .bak', async () => {
   const h = await harness();
   try {

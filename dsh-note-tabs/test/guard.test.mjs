@@ -63,6 +63,22 @@ test('每种 JSX 类名都有对应样式，浮层有可见性开关', () => {
   const missing = [...used].filter((name) => !declared.has(name));
   assert.deepEqual(missing, [], '这些类名用到了但没有样式：' + missing.join(','));
 });
+test('共用类不能只挂在某一个入口的父选择器下', () => {
+  // 真实事故：角标写成「左栏根 .dnt-cnt」，左栏有样式、标题栏那个 span
+  // 一条规则也匹配不上，渲染成贴着图标的裸文字——看起来就像入口丢了样式。
+  // 后代选择器本身合法（toast 的关闭键就靠它），但不许把父级写成入口根。
+  const ENTRY_ROOTS = ['dnt-rail', 'dnt-hdr'];
+  const offenders = [];
+  for (const block of source.matchAll(/(^|})\s*([^{}@]+)\{[^}]*\}/g)) {
+    const selector = block[2];
+    for (const root of ENTRY_ROOTS) {
+      const scoped = new RegExp('\\.' + root + '\\s+\\.(dnt-[a-z0-9-]+)').exec(selector);
+      if (scoped) offenders.push(root + ' > ' + scoped[1]);
+    }
+  }
+  assert.deepEqual(offenders, [], '这些类被绑死在一个入口的父选择器下：' + offenders.join(','));
+  assert.match(source, /^ {6}"\.dnt-cnt\{/m, '.dnt-cnt 必须是顶层选择器，两个入口共用');
+});
 test('浮层打开后指针离开图标也要排关闭：否则浮层永久悬空', () => {
   // 指针横穿离开时不会触发浮层自身的 pointerleave，只能由图标补一次延迟关闭。
   assert.match(source, /if \(state\.hover\.open\) scheduleHoverClose\(\)/, '图标离开要补关闭');
@@ -99,6 +115,20 @@ test('设置预览吃 defaultView：改默认视图也要有反应（Q6d）', ()
 test('卡片网格是 300px 起（Q6b），不是 268px', () => {
   assert.match(source, /minmax\(300px,1fr\)/);
   assert.equal(source.includes('minmax(268px'), false, '网格宽度偏离设计稿');
+});
+
+test('气泡点外部关闭，详情页不再有 tab', () => {
+  assert.match(source, /document\.addEventListener\("pointerdown", onDown, true\)/, '捕获阶段监听点外部');
+  assert.match(source, /hoverAnchorEl/, '触发按钮算内部，点它本身不会被外部关闭抢先');
+  assert.equal(source.includes('className: "dnt-tabs"'), false, '详情页 tab 已删除');
+  assert.equal(source.includes('t("tabNotes")'), false, '旧 tab 文案已删除');
+});
+
+test('标题栏入口走声明式 slot，关闭位置时真的注销注册', () => {
+  assert.match(source, /slots\.inject\("conversation\.session\.header\.utilities"/);
+  assert.match(source, /order: 100/, '排在 utilities 最右端，紧邻右侧栏展开按钮');
+  assert.match(source, /unmountEntry\("sidebar"\)/, '左栏行不能只靠组件返回 null 隐藏');
+  assert.match(source, /slots\.inject\("settings\.section"/, '配置回到设置页');
 });
 
 test('错误按 host 给的 code 分派，不靠中文字符串判断', () => {

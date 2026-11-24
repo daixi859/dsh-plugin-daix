@@ -60,12 +60,23 @@ function harness() {
 
   const registered = [];
   const slots = {
-    inject(name, register) { registrations.push({ name, dispose: register() }); return () => {}; },
+    inject(name, register) {
+      const dispose = register();
+      registrations.push({ name, dispose });
+      return () => {
+        if (typeof dispose === 'function') dispose();
+        const at = registrations.findIndex((entry) => entry.dispose === dispose);
+        if (at >= 0) registrations.splice(at, 1);
+      };
+    },
     register(options, component) {
       assert.equal(typeof options.name, 'string');
       assert.equal(typeof component, 'function');
       registered.push(options);
-      return () => {};
+      return () => {
+        const at = registered.indexOf(options);
+        if (at >= 0) registered.splice(at, 1);
+      };
     },
   };
   const ctx = {
@@ -86,17 +97,38 @@ test('工厂注册出正确 id 且导出 apply/inject', () => {
   assert.ok(h.registrations.length >= 1);
 });
 
-test('apply 注册四个插槽面（设置并入详情页 tab，不再占用 settings.section）', () => {
+test('apply 注册六个插槽面（标题栏入口 + 独立设置页）', () => {
   const h = harness();
   h.plugin.apply(h.ctx);
   const names = h.registered.map((entry) => entry.name);
   assert.deepEqual([...new Set(names)].sort(), [
     'conversation.chat.assistant-actions',
+    'conversation.session.header.utilities',
     'main',
+    'settings.section',
     'shell.overlay',
     'sidebar.panellist',
   ].sort());
-  assert.equal(names.includes('settings.section'), false, '设置页不再注册为独立 section');
+});
+
+test('入口位置改变时动态注销/重注册，不留空按钮', () => {
+  const h = harness();
+  h.plugin.apply(h.ctx);
+  const names = () => h.registered.map((entry) => entry.name);
+  assert.ok(names().includes('sidebar.panellist'));
+  assert.ok(names().includes('conversation.session.header.utilities'));
+
+  // 一个都不选：两个注册都必须真的消失（组件返回 null 仍会留下左栏空按钮）
+  h.plugin.__state.store.settings.entryPositions = [];
+  h.plugin.__emit();
+  assert.equal(names().includes('sidebar.panellist'), false);
+  assert.equal(names().includes('conversation.session.header.utilities'), false);
+
+  // 只开标题栏：左栏仍不注册
+  h.plugin.__state.store.settings.entryPositions = ['header'];
+  h.plugin.__emit();
+  assert.equal(names().includes('sidebar.panellist'), false);
+  assert.ok(names().includes('conversation.session.header.utilities'));
 });
 
 test('注入样式只加一次且带插件标记', () => {

@@ -25,7 +25,7 @@
 | Q9 | 重复收藏 | 幂等：已收藏高亮，再点取消 |
 | Q10 | 列表项 | ~~首行作标题~~ → **便签没有标题**：直接预览正文前 3 行（截 150 字）+ 会话名 + 相对时间 |
 | Q11 | 检索 | 详情页一个搜索框，按正文即时过滤 |
-| Q12 | 配置 | 独立设置页三项：浮层条数、浮层开关、默认视图 → **已被第 2 轮实现推翻：改为详情页内的「设置」tab** |
+| Q12 | 配置 | 独立设置页三项：浮层条数、浮层开关、默认视图 → 第 2 轮改为详情页内的「设置」tab → **第 3 轮恢复为 DSH 设置页的 `settings.section`，并新增入口显示位置（四项）** |
 | Q13 | 落盘/通道 | 单 JSON + 临时文件 rename 原子写，走包内 `host.call` RPC |
 | Q14 | 命名 | 包名 `dsh-note-tabs`，面板标题「便签」 |
 | Q15 | 来源快照 | 不存会话名/工作区名等可读快照 |
@@ -68,8 +68,9 @@
 | 回答下方图标 | `conversation.chat.assistant-actions` (list, session) | owner props 只有 `messageId`，正文需按 messageId 从 chat 快照取 |
 | 左侧栏入口 | `sidebar.panellist` (list, root) | 每个 id 对应 `main` 的同名 key；壳层负责按钮，label 取注册元数据 |
 | 详情页 | `main` (keyed, root) | `key = dsh-note-tabs`，与 panellist id 一致 |
-| hover 浮层 | `shell.overlay` (list, root) | 用 React 渲染，自己处理 anchor 定位与 hover 延迟 |
-| 设置页 | `settings.section` (list, root) | 单页三行 |
+| hover 浮层 / 点击气泡 | `shell.overlay` (list, root) | 同一个组件；左栏 hover 延迟，标题栏点击展开 + 点外部关闭 |
+| 标题栏右侧入口 | `conversation.session.header.utilities` (list, session) | order 100，位于「展开/关闭右侧栏」按钮左侧的 utilities 末端 |
+| 设置页 | `settings.section` (list, root) | 四项偏好 + 实时预览；详情页不再有设置 tab |
 
 输入框发送：`inputActions.insertText(text, inputActions.captureInsertion())`，比 `setDraft` 更符合「追加」语义且不破坏引用 chip。
 
@@ -90,6 +91,19 @@
 | R5 | 新建入口 | 详情页页头实心「新建便签」；浮层头部右侧「+」就地展开 textarea |
 | R6 | Markdown | 折叠态纯文本 3 行；展开态用宿主基线模块的 `MarkdownText`（与对话区同一份） |
 | R7 | 版面 | 单栏居中、页头一行、填充底搜索、分组靠留白、卡片发丝描边无阴影、操作按钮 hover 才现（**这一条与「已修正」里「常驻可点」冲突，以 R7 为准**） |
+
+## 第三轮修订（入口与设置页，用户截图确认）
+
+| # | 决策 | 结论 |
+|---|---|---|
+| S1 | 新增入口位置 | 标题栏右侧「展开/关闭右侧栏」按钮左侧；落点是 `conversation.session.header.utilities`（order 100），不抢占 shipped 占用的 `corner` 槽 |
+| S2 | 新入口交互 | 保留气泡内容，改为点击展开；点外部 / `Esc` / 再点按钮关闭，指针移开不关闭 |
+| S3 | 左侧入口 | 保持现状：hover 浮层 + 点击进入详情页；`hoverEnabled` 只管左栏，不影响标题栏气泡 |
+| S4 | 入口显示位置配置 | `settings.entryPositions`，值 `sidebar` / `header`，可多选可全关，默认两个都开；保存后立即生效 |
+| S5 | 隐藏入口的实现 | 左栏行来自 slot 注册项，必须注销 `sidebar.panellist` 注册；组件返回 `null` 会留下空按钮，禁止 |
+| S6 | 设置归属 | 详情页删掉 `便签 / 设置` tab，默认只显示便签；四项偏好与预览统一搬到 DSH 设置页 `settings.section` |
+| S7 | 术语 | 浮层（hover）/ 气泡（点击）/ 弹窗（预览编辑模态）三分，写入 `GLOSSARY.md` |
+| S8 | 气泡定位 | 以标题栏按钮为锚点向左下展开，宽 352px、最大高 `min(62vh,520px)`，不越过视口右缘 |
 
 ## 已修正
 

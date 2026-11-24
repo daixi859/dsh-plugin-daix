@@ -1,5 +1,5 @@
 // 组件树渲染冒烟：用最小假 React 真的执行组件函数，确认五个面都能渲染出元素、
-// 设置 tab 能切到、返回按钮存在。运行：node --test "dsh-note-tabs/test/*.test.mjs"
+// 标题栏气泡可开合、设置页四偏好可渲染、返回按钮存在。运行：node --test "dsh-note-tabs/test/*.test.mjs"
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -112,7 +112,7 @@ function seedNotes() {
   return { h, main };
 }
 
-test('详情页可渲染，且带「返回会话」按钮与两个 tab', () => {
+test('详情页可渲染，且不再有便签/设置 tab', () => {
   const { h, main } = seedNotes();
   const tree = main.component({
     useWorkspaces: () => ({ items: [] }),
@@ -121,9 +121,9 @@ test('详情页可渲染，且带「返回会话」按钮与两个 tab', () => {
   const shapes = walk(tree);
   assert.ok(shapes.types.includes('div'));
   assert.ok(shapes.labels.includes('返回会话'), '返回按钮有可访问名');
-  assert.ok(shapes.text.some((text) => text.includes('便签')), '有便签 tab');
-  assert.ok(shapes.text.some((text) => text.includes('设置')), '有设置 tab');
   assert.ok(shapes.text.some((text) => text.includes('新建便签')), '有新建便签入口');
+  assert.equal(shapes.text.includes('设置'), false, '详情页没有设置 tab');
+  assert.equal(shapes.text.includes('便签'), true, '标题仍是便签');
 });
 
 /** 按 className 找第一个 host 元素（用于模拟点击）。 */
@@ -219,6 +219,39 @@ test('浮层头部右侧的「添加」展开输入区，并能提交到 host �
   const composed = findByClass(withCompose, 'dnt-hc-compose');
   const kids = [].concat(composed.children || [], composed.props.children || []).flat(4);
   assert.ok(kids.some((child) => child && child.type === 'textarea'), '输入区里是 textarea');
+});
+
+test('标题栏入口渲染按钮，点击展开 header 气泡，再点收起', () => {
+  const h = harness({ primitives: { MarkdownText: MEMO_MARKDOWN } });
+  const props = seedOneNote(h);
+  const entry = findComponent(h.registered, 'conversation.session.header.utilities');
+  assert.ok(entry, '标题栏 utilities 槽已注册');
+  assert.equal(entry.options.order, 100, '排在 utilities 最右端');
+
+  const button = findByClass(entry.component(props), 'dnt-hdr');
+  assert.ok(button, '渲染出标题栏按钮');
+  button.props.onClick();
+  assert.equal(h.plugin.__state.hover.open, true);
+  assert.equal(h.plugin.__state.hover.placement, 'header');
+
+  const overlay = h.registered.filter((item) => item.options.id === 'note-tabs.hover')[0];
+  const popover = walk(overlay.component({}));
+  assert.ok(popover.types.includes('div'), '气泡渲染出来了');
+
+  // 再点一次同一个按钮应收起（用新渲染的按钮，模拟状态更新后的视图）
+  const button2 = findByClass(entry.component(props), 'dnt-hdr');
+  button2.props.onClick();
+  assert.equal(h.plugin.__state.hover.open, false);
+});
+
+test('设置页分区渲染四个偏好，含两个入口位置开关', () => {
+  const h = harness();
+  const section = findComponent(h.registered, 'settings.section');
+  assert.ok(section, '设置页分区已注册');
+  const shapes = walk(section.component({ useSessions: () => ({ ids: [], byId: {} }) }));
+  assert.ok(shapes.labels.includes('左侧菜单'), '左栏入口开关有无障碍名');
+  assert.ok(shapes.labels.includes('标题栏右侧'), '标题栏入口开关有无障碍名');
+  assert.ok(shapes.labels.includes('悬浮框条数'), '原有偏好也搬过来了');
 });
 
 test('hover 浮层与 Toast 在关闭态渲染为空', () => {

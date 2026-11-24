@@ -21,6 +21,9 @@ export const HOVER_COUNT_DEFAULT = 10;
 /** 默认视图：按工作区分组 / 全部平铺。 */
 export const DEFAULT_VIEW = 'grouped';
 
+/** 便签入口的两个显示位置。顺序稳定，用于存储收敛与设置页展示。 */
+export const ENTRY_POSITIONS = ['sidebar', 'header'];
+
 /** 空存储。 */
 export function emptyStore() {
   return {
@@ -30,12 +33,13 @@ export function emptyStore() {
   };
 }
 
-/** 三项偏好的默认值。 */
+/** 四项偏好的默认值（含入口显示位置，默认两个入口都显示）。 */
 export function defaultSettings() {
   return {
     hoverCount: HOVER_COUNT_DEFAULT,
     hoverEnabled: true,
     defaultView: DEFAULT_VIEW,
+    entryPositions: ENTRY_POSITIONS.slice(),
   };
 }
 
@@ -103,6 +107,11 @@ export function normalizeSettings(raw) {
   }
   if (typeof raw.hoverEnabled === 'boolean') settings.hoverEnabled = raw.hoverEnabled;
   if (raw.defaultView === 'grouped' || raw.defaultView === 'flat') settings.defaultView = raw.defaultView;
+  // 位置是数组：只保留合法值，顺序按 ENTRY_POSITIONS 归一化；空数组表示两个入口都不显示。
+  // 字段缺失（旧 notes.json）时保留默认的两个位置。
+  if (Array.isArray(raw.entryPositions)) {
+    settings.entryPositions = ENTRY_POSITIONS.filter((position) => raw.entryPositions.indexOf(position) >= 0);
+  }
   return settings;
 }
 
@@ -204,9 +213,13 @@ export function restoreNote(store, note, index = 0) {
 export function patchSettings(store, patch) {
   const merged = normalizeSettings({ ...store.settings, ...(patch && typeof patch === 'object' ? patch : {}) });
   const current = store.settings || {};
+  const currentPositions = Array.isArray(current.entryPositions) ? current.entryPositions : [];
+  const samePositions = merged.entryPositions.length === currentPositions.length
+    && merged.entryPositions.every((position, index) => position === currentPositions[index]);
   if (merged.hoverCount === current.hoverCount
     && merged.hoverEnabled === current.hoverEnabled
-    && merged.defaultView === current.defaultView) {
+    && merged.defaultView === current.defaultView
+    && samePositions) {
     return store;
   }
   return { ...store, settings: merged };

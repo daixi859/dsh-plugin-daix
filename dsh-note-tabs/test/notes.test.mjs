@@ -156,6 +156,25 @@ test('normalizeSettings 收敛越界值与未知枚举', () => {
   assert.equal(normalizeSettings({ hoverEnabled: false }).hoverEnabled, false);
 });
 
+test('入口位置默认两个都开，旧文件缺字段时补齐', () => {
+  assert.deepEqual(emptyStore().settings.entryPositions, ['sidebar', 'header']);
+  assert.deepEqual(normalizeSettings({}).entryPositions, ['sidebar', 'header']);
+  assert.deepEqual(normalizeStore({ notes: [] }).settings.entryPositions, ['sidebar', 'header']);
+});
+
+test('normalizeSettings 收敛入口位置：过滤非法值、允许空数组', () => {
+  assert.deepEqual(normalizeSettings({ entryPositions: ['header', 'bogus'] }).entryPositions, ['header']);
+  assert.deepEqual(normalizeSettings({ entryPositions: [] }).entryPositions, []);
+  assert.deepEqual(normalizeSettings({ entryPositions: 'header' }).entryPositions, ['sidebar', 'header']);
+});
+
+test('patchSettings 入口位置同值不落盘，变化才产生新 store', () => {
+  const store = patchSettings(emptyStore(), { entryPositions: ['sidebar'] });
+  assert.deepEqual(store.settings.entryPositions, ['sidebar']);
+  assert.equal(patchSettings(store, { entryPositions: ['sidebar'] }), store);
+  assert.notEqual(patchSettings(store, { entryPositions: [] }), store);
+});
+
 test('patchSettings 只改给定字段', () => {
   const store = emptyStore();
   const next = patchSettings(store, { hoverCount: 20 });

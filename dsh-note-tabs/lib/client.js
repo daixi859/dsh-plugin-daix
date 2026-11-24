@@ -1,10 +1,13 @@
 // dsh-note-tabs — client 面
 //
-// 五个插槽（设置不再是独立 section，而是详情页里的一个 tab）：
-//   conversation.chat.assistant-actions — 回复下方收藏按钮（session 作用域）
-//   sidebar.panellist                   — 左栏图标（root）
-//   main (key = note-tabs)              — 便签详情页 + 设置 tab（root）
-//   shell.overlay                       — hover 浮层 + 撤销 Toast（root）
+// 六个插槽（设置回到独立的 settings.section，详情页只留便签）：
+//   conversation.chat.assistant-actions       — 回复下方收藏按钮（session 作用域）
+//   sidebar.panellist                        — 左栏图标（root，可按配置动态注销）
+//   conversation.session.header.utilities    — 标题栏右侧入口（session，order=100）
+//   main (key = note-tabs)                   — 便签详情页（root）
+//   settings.section                         — DSH 设置页里的便签分区（root）
+//   shell.overlay                            — 气泡 + 撤销 Toast + 预览弹窗（root）
+// 左栏图标 hover 出「浮层」；标题栏图标点击出「气泡」，两者共用 HoverCardLayer。
 // 详情页页头带「返回会话」按钮，回到当前 session。
 //
 // 数据通道：POST /plugins/note-tabs/rpc（host 面 lib/index.js）。
@@ -27,6 +30,8 @@ window.__ModuleLoader__.load({
       ? primitives.MarkdownText : null;
 
     var PANEL_ID = "note-tabs";
+    // 与 host 的 notes.js ENTRY_POSITIONS 保持一致；顺序即设置页展示顺序。
+    var ENTRY_POSITIONS = ["sidebar", "header"];
     var RPC = "/plugins/note-tabs/rpc";
     var BT = String.fromCharCode(96);
     var FENCE = BT + BT + BT;
@@ -47,8 +52,6 @@ window.__ModuleLoader__.load({
         emptyHint: "在任意回答下方点收藏图标，就会出现在这里",
         pageSub: "收藏自各轮回答的 Markdown 片段，或自己写。点卡片可展开，hover 出行内操作。",
         back: "返回会话",
-        tabNotes: "便签",
-        tabSettings: "设置",
         noMatch: "没有匹配的便签",
         noMatchHint: "换个关键词，或清空搜索框",
         retry: "重试",
@@ -70,11 +73,17 @@ window.__ModuleLoader__.load({
         saveAction: "收藏这条回答",
         cannot: "暂时取不到这条回答的正文",
         duplicate: "已有内容相同的便签",
-        settingsSub: "三项偏好，写入 ~/.dsh/storages/dsh-note-tabs/notes.json",
+        settingsSub: "四项偏好，写入 ~/.dsh/storages/dsh-note-tabs/notes.json",
+        entryPositions: "入口显示位置",
+        entryPositionsHint: "可多选，也可全部关闭；改动立即生效",
+        entrySidebar: "左侧菜单",
+        entrySidebarHint: "左栏「便签」图标：hover 列出最近便签，点击进入详情页",
+        entryHeader: "标题栏右侧",
+        entryHeaderHint: "「展开/关闭右侧栏」按钮左侧：点击展开便签气泡",
         hoverCount: "悬浮框条数",
-        hoverCountHint: "侧栏图标 hover 时列出最近几条",
-        hoverEnabled: "启用悬浮框",
-        hoverEnabledHint: "关闭后 hover 不弹出，仅点击进入详情",
+        hoverCountHint: "左栏图标 hover 时列出最近几条",
+        hoverEnabled: "启用左栏悬浮框",
+        hoverEnabledHint: "关闭后左栏 hover 不弹出；不影响标题栏的点击气泡",
         defaultView: "默认视图",
         defaultViewHint: "详情页打开时的排列方式",
         preview: "实时预览",
@@ -108,8 +117,6 @@ window.__ModuleLoader__.load({
         emptyHint: "Click the bookmark under any answer to save it here",
         pageSub: "Markdown excerpts saved from answers, or written yourself. Click a card to expand; hover for actions.",
         back: "Back to chat",
-        tabNotes: "Notes",
-        tabSettings: "Settings",
         noMatch: "No matching notes",
         noMatchHint: "Try another keyword, or clear the search",
         retry: "Retry",
@@ -131,11 +138,17 @@ window.__ModuleLoader__.load({
         saveAction: "Save this answer as a note",
         cannot: "The answer text is unavailable right now",
         duplicate: "A note with the same text already exists",
-        settingsSub: "Three preferences, stored in ~/.dsh/storages/dsh-note-tabs/notes.json",
+        settingsSub: "Four preferences, stored in ~/.dsh/storages/dsh-note-tabs/notes.json",
+        entryPositions: "Entry positions",
+        entryPositionsHint: "Select any, or none; changes apply immediately",
+        entrySidebar: "Left sidebar",
+        entrySidebarHint: "The sidebar note icon: hover lists recent notes, click opens the page",
+        entryHeader: "Right of title bar",
+        entryHeaderHint: "Left of the expand/collapse right sidebar button: click opens the popover",
         hoverCount: "Hover card rows",
         hoverCountHint: "How many recent notes the sidebar hover lists",
-        hoverEnabled: "Enable hover card",
-        hoverEnabledHint: "When off, hovering does nothing and only a click opens the page",
+        hoverEnabled: "Enable sidebar hover card",
+        hoverEnabledHint: "When off, the sidebar hover does nothing; the title-bar popover still opens",
         defaultView: "Default view",
         defaultViewHint: "How the notes page arranges notes",
         preview: "Live preview",
@@ -197,7 +210,10 @@ window.__ModuleLoader__.load({
       ".dnt-rail{position:relative;display:grid;place-items:center;cursor:pointer;color:var(--dsw-alias-label-tertiary);background:none;border:none;padding:0}",
       ".dnt-rail[data-active='true']{color:var(--dsw-alias-brand-primary)}",
       ".dnt-rail svg{display:block}",
-      ".dnt-rail .dnt-cnt{position:absolute;top:-2px;right:-4px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-layer-1,#fff);font:600 8.5px/13px " + FONT_TEXT + ";text-align:center}",
+      // 角标：两个入口（左栏 .dnt-rail / 标题栏 .dnt-hdr）共用同一份样式。
+      // 早先写成 `.dnt-rail .dnt-cnt`，标题栏那个 span 拿不到任何规则，
+      // 于是渲染成紧贴图标的裸文字——两侧入口看起来就像只有一边有样式。
+      ".dnt-cnt{position:absolute;top:-2px;right:-4px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-layer-1,#fff);font:600 8.5px/13px " + FONT_TEXT + ";text-align:center;pointer-events:none}",
       ".dnt-hover{position:fixed;z-index:60;width:352px;max-height:min(62vh,520px);display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.14));border-radius:13px;box-shadow:0 18px 44px rgba(0,0,0,.16),0 2px 8px rgba(0,0,0,.06);opacity:0;transform:translateX(-6px) scale(.985);transform-origin:left top;transition:opacity .13s ease-out,transform .13s ease-out;pointer-events:none}",
       // 打开态：这一条是浮层能被看见的唯一开关。基础样式是 opacity:0 + pointer-events:none，
       // 删掉这条规则的表现就是「hover 有反应但什么也不显示」。
@@ -245,10 +261,14 @@ window.__ModuleLoader__.load({
       ".dnt-new{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px 0 8px;flex:none;border:none;border-radius:var(--dsw-radius-sm,8px);background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-layer-1,#fff);font:500 12.5px " + FONT_TEXT + ";cursor:pointer}",
       ".dnt-new:hover{filter:brightness(1.07)}",
       ".dnt-new svg{width:14px;height:14px;display:block}",
-      ".dnt-tabs{display:flex;gap:18px;margin:10px 0 0;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}",
-      ".dnt-tab{padding:6px 1px 8px;border:none;background:none;cursor:pointer;font:500 12.5px " + FONT_TEXT + ";color:var(--dsw-alias-label-tertiary);border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .12s}",
-      ".dnt-tab:hover{color:var(--dsw-alias-label-primary)}",
-      ".dnt-tab[aria-selected='true']{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-brand-primary);font-weight:600}",
+      // 标题栏右侧入口：与宿主右对齐 utilities 同尺寸，自己带角标定位所需的 relative。
+      // flex:none + line-height:0：utilities 是 flex 容器，缺这两条时按钮会被压扁、
+      // svg 下方多出行高，视觉上就像「样式没生效」。
+      ".dnt-hdr{position:relative;flex:none;display:grid;place-items:center;width:26px;height:26px;line-height:0;padding:0;border:none;border-radius:var(--dsw-radius-sm,8px);background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer}",
+      ".dnt-hdr:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}",
+      ".dnt-hdr[data-open='true']{color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-interactive-bg-hover-accent)}",
+      ".dnt-hdr svg{width:16px;height:16px;display:block}",
+      ".dnt-hover[data-placement='header']{transform-origin:right top}",
       // 工具条：搜索是填充底而不是描边框，视觉重量低于卡片本身。
       ".dnt-sub{margin:8px 0 0;font-size:11.5px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}",
       ".dnt-tool{display:flex;align-items:center;gap:8px;margin:12px 0 10px}",
@@ -385,16 +405,15 @@ window.__ModuleLoader__.load({
     var state = {
       phase: "idle",
       error: null,
-      store: { version: 1, notes: [], settings: { hoverCount: 10, hoverEnabled: true, defaultView: "grouped" } },
+      store: { version: 1, notes: [], settings: { hoverCount: 10, hoverEnabled: true, defaultView: "grouped", entryPositions: ["sidebar", "header"] } },
       lastInput: null,
       toasts: [],
       toastSeq: 0,
-      hover: { open: false, top: 0, left: 0, workspaceTitle: null, rows: [] },
+      hover: { open: false, top: 0, left: 0, workspaceTitle: null, rows: [], placement: "sidebar" },
       hoverCompose: null,
       view: null,
       query: "",
       modal: null,
-      tab: "notes",
       draft: null,
     };
     var listeners = [];
@@ -417,11 +436,14 @@ window.__ModuleLoader__.load({
       cardTimer = setTimeout(function () { cardTimer = 0; closeHover(); }, 320);
     }
 
-    var HOVER_CLOSED = { open: false, top: 0, left: 0, workspaceTitle: null, rows: [] };
+    var HOVER_CLOSED = { open: false, top: 0, left: 0, workspaceTitle: null, rows: [], placement: "sidebar" };
+    // 触发气泡/浮层的那个 DOM 节点。点外部关闭时要把它算作「内部」，否则点按钮本身会被判成外部。
+    var hoverAnchorEl = null;
     function closeHover() {
       if (!state.hover.open && state.hoverCompose === null) return;
       var interrupted = state.hoverCompose !== null && String(state.hoverCompose.text).trim() !== "";
       state.hover = HOVER_CLOSED;
+      hoverAnchorEl = null;
       // 正在写的便签不能因为浮层收起就丢掉：收起后转到详情页继续写。
       state.hoverCompose = null;
       if (interrupted) toast(t("composeDropped"));
@@ -437,7 +459,7 @@ window.__ModuleLoader__.load({
      */
     var SNAPSHOT_KEYS = [
       "phase", "error", "store", "modal", "toasts", "hover", "hoverCompose",
-      "view", "tab", "draft", "query", "lastInput",
+      "view", "draft", "query", "lastInput",
     ];
     function snapshot() {
       var value = {};
@@ -899,12 +921,16 @@ window.__ModuleLoader__.load({
         var rect = anchorRef.current ? anchorRef.current.getBoundingClientRect() : null;
         var top = rect ? Math.max(8, Math.min(rect.top, window.innerHeight - 360)) : 8;
         var left = rect ? Math.min(rect.right + 10, Math.max(8, window.innerWidth - 372)) : 66;
+        var anchor = anchorRef.current;
+        hoverAnchorEl = anchor && typeof anchor.closest === "function"
+          ? (anchor.closest("button") || anchor) : anchor;
         state.hover = {
           open: true,
           top: top,
           left: left,
           workspaceTitle: currentWorkspace ? currentWorkspace.title : null,
           rows: hoverRows(),
+          placement: "sidebar",
         };
         emit();
       };
@@ -923,6 +949,7 @@ window.__ModuleLoader__.load({
           left: view.hover.left,
           workspaceTitle: currentWorkspace ? currentWorkspace.title : null,
           rows: nextRows,
+          placement: view.hover.placement || "sidebar",
         };
         emit();
       }, [view.hover.open, view.hover.rows, view.store.notes, workspaces, sessions, settings.hoverCount]);
@@ -956,10 +983,78 @@ window.__ModuleLoader__.load({
         : null);
     }
 
-    // ── hover 浮层（shell.overlay）───────────────────────────────────────────
+    // ── 标题栏右侧入口（conversation.session.header.utilities）─────────────────
+    // 与左栏图标共用同一个气泡组件；这里是点击展开、点外部/Esc 再点按钮关闭。
+    function HeaderEntry(props) {
+      var useWorkspaces = props.useWorkspaces;
+      var useSessions = props.useSessions;
+      var view = useStore();
+      var workspaces = useMaybe(useWorkspaces)(function (value) { return value; });
+      var sessions = useMaybe(useSessions)(function (value) { return value; });
+      var anchorRef = React.useRef(null);
+
+      React.useEffect(function () { load(); }, []);
+
+      var settings = view.store.settings;
+      var currentSessionId = view.lastInput ? view.lastInput.sessionId : null;
+      var currentWorkspace = workspaceOfSession(workspaces, currentSessionId);
+      var all = sortedNotes(view.store.notes);
+      var scoped = currentWorkspace
+        ? all.filter(function (note) { return note.workspaceId === currentWorkspace.workspaceId; })
+        : all;
+      var rows = scoped.slice(0, settings.hoverCount);
+
+      var openCard = function () {
+        var rect = anchorRef.current ? anchorRef.current.getBoundingClientRect() : null;
+        var viewportWidth = typeof window !== "undefined" && typeof window.innerWidth === "number"
+          ? window.innerWidth : 1024;
+        // 按钮在右上角：向左下展开，右缘不超过按钮右缘，也不越过视口。
+        var top = rect && typeof rect.bottom === "number" ? rect.bottom + 8 : 40;
+        var left = rect && typeof rect.right === "number"
+          ? Math.max(8, Math.min(rect.right - 352, viewportWidth - 360)) : 8;
+        hoverAnchorEl = anchorRef.current;
+        state.hover = {
+          open: true,
+          top: top,
+          left: left,
+          workspaceTitle: currentWorkspace ? currentWorkspace.title : null,
+          rows: rows.map(function (note) {
+            return {
+              id: note.id,
+              text: plainText(note.text),
+              source: sessionTitle(sessions, note.sessionId) || t("unknownSession"),
+              raw: note.text,
+            };
+          }),
+          placement: "header",
+        };
+        emit();
+      };
+
+      var isOpen = view.hover.open && view.hover.placement === "header";
+      var onClick = function () {
+        if (isOpen) { closeHover(); return; }
+        openCard();
+      };
+
+      return h("button", {
+        ref: anchorRef,
+        type: "button",
+        className: "dnt-hdr dnt-root",
+        "data-open": isOpen ? true : undefined,
+        "aria-label": t("title"),
+        "aria-expanded": isOpen === true,
+        title: t("title"),
+        onClick: onClick,
+      }, h(IconNote, { size: 16 }), view.store.notes.length > 0
+        ? h("span", { className: "dnt-cnt" }, view.store.notes.length > 99 ? "99+" : String(view.store.notes.length))
+        : null);
+    }
+    // ── hover 浮层 / 点击气泡（shell.overlay）────────────────────────────────
     function HoverCardLayer() {
       var view = useStore();
       var hover = view.hover;
+      var panelRef = React.useRef(null);
 
       React.useEffect(function () {
         return function () {
@@ -983,6 +1078,21 @@ window.__ModuleLoader__.load({
         };
         document.addEventListener('keydown', onKey);
         return function () { document.removeEventListener('keydown', onKey); };
+      }, [hover.open]);
+
+      React.useEffect(function () {
+        if (!hover.open) return undefined;
+        // 点击外部关闭：捕获阶段的 pointerdown 覆盖「点在别的按钮上」，
+        // 面板自身与触发按钮都算内部，避免点「+」或再点按钮时被自己关掉。
+        var onDown = function (event) {
+          var target = event && event.target;
+          if (panelRef.current && typeof panelRef.current.contains === "function" && panelRef.current.contains(target)) return;
+          if (hoverAnchorEl && typeof hoverAnchorEl.contains === "function" && hoverAnchorEl.contains(target)) return;
+          if (hoverAnchorEl !== null && hoverAnchorEl === target) return;
+          closeHover();
+        };
+        document.addEventListener("pointerdown", onDown, true);
+        return function () { document.removeEventListener("pointerdown", onDown, true); };
       }, [hover.open]);
 
       var compose = view.hoverCompose;
@@ -1017,13 +1127,16 @@ window.__ModuleLoader__.load({
       if (!hover.open) return null;
 
       return h("div", {
+        ref: panelRef,
         className: "dnt-hover dnt-root",
         "data-open": true,
+        "data-placement": hover.placement || "sidebar",
         role: "dialog",
         "aria-label": t("hoverTitle"),
         style: { top: hover.top, left: hover.left },
         onPointerEnter: keepOpen,
-        onPointerLeave: scheduleClose,
+        // 左栏浮层靠指针离去延迟收起；点击式的标题栏气泡不受指针影响。
+        onPointerLeave: hover.placement === "header" ? undefined : scheduleClose,
       },
         h("div", { className: "dnt-hc-head" },
           h("span", { className: "dnt-hc-h" }, t("hoverTitle")),
@@ -1293,7 +1406,6 @@ window.__ModuleLoader__.load({
       };
       var newNote = function () {
         state.draft = { text: "" };
-        state.tab = "notes";
         emit();
       };
       var saveDraft = function () {
@@ -1347,12 +1459,6 @@ window.__ModuleLoader__.load({
         });
       };
 
-      var tab = view.tab === "settings" ? "settings" : "notes";
-      var setTab = function (next) {
-        state.tab = next;
-        emit();
-      };
-
       return h("div", { className: "dnt-page dnt-root" },
         h("div", { className: "dnt-page-in" },
           h("div", { className: "dnt-head" },
@@ -1372,20 +1478,7 @@ window.__ModuleLoader__.load({
               onClick: newNote,
               title: t("newNoteHint"),
             }, h(IconPlus, null), t("newNote"))),
-          h("div", { className: "dnt-tabs", role: "tablist" },
-            h("button", {
-              type: "button", role: "tab", className: "dnt-tab",
-              "aria-selected": tab === "notes",
-              onClick: function () { setTab("notes"); },
-            }, t("tabNotes")),
-            h("button", {
-              type: "button", role: "tab", className: "dnt-tab",
-              "aria-selected": tab === "settings",
-              onClick: function () { setTab("settings"); },
-            }, t("tabSettings"))),
-          tab === "settings"
-            ? h(SettingsBody, { sessions: sessions })
-            : h("div", null,
+          h("div", null,
               h("p", { className: "dnt-sub" }, t("pageSub")),
               h("div", { className: "dnt-tool" },
                 h("label", { className: "dnt-search" },
@@ -1458,10 +1551,10 @@ window.__ModuleLoader__.load({
                 }))));
     }
 
-    // ── 设置 tab（详情页内，不再占用 settings.section）────────────────────────
+    // ── DSH 设置页里的分区（settings.section）────────────────────────────────
     function SettingsBody(props) {
       var view = useStore();
-      var sessionsRef = props.sessions;
+      var sessionsRef = useMaybe(props.useSessions)(function (value) { return value; });
       React.useEffect(function () { load(); }, []);
       var settings = view.store.settings;
 
@@ -1470,6 +1563,18 @@ window.__ModuleLoader__.load({
         rpc("settings", { patch: next })
           .then(function (result) { applyStore(result.store, settingsSeq); })
           .catch(function (error) { toast(error.message); });
+      };
+
+      var togglePosition = function (position) {
+        var enabled = {};
+        var current = Array.isArray(settings.entryPositions) ? settings.entryPositions : ENTRY_POSITIONS;
+        for (var index = 0; index < current.length; index += 1) enabled[current[index]] = true;
+        enabled[position] = !enabled[position];
+        patch({ entryPositions: ENTRY_POSITIONS.filter(function (item) { return enabled[item] === true; }) });
+      };
+      var isPositionOn = function (position) {
+        var current = Array.isArray(settings.entryPositions) ? settings.entryPositions : ENTRY_POSITIONS;
+        return current.indexOf(position) >= 0;
       };
 
       var preview = sortedNotes(view.store.notes).slice(0, Math.min(3, settings.hoverCount));
@@ -1482,6 +1587,34 @@ window.__ModuleLoader__.load({
         h("div", { className: "dnt-set" },
           h("div", null,
             h("p", { className: "dnt-s-sub" }, t("settingsSub")),
+            h("div", { className: "dnt-srow" },
+              h("div", { className: "dnt-s-l" },
+                h("div", { className: "dnt-s-n" }, t("entryPositions")),
+                h("div", { className: "dnt-s-d" }, t("entryPositionsHint")))),
+            h("div", { className: "dnt-srow" },
+              h("div", { className: "dnt-s-l" },
+                h("div", { className: "dnt-s-n" }, t("entrySidebar")),
+                h("div", { className: "dnt-s-d" }, t("entrySidebarHint"))),
+              h("button", {
+                type: "button",
+                className: "dnt-sw",
+                role: "switch",
+                "aria-checked": isPositionOn("sidebar"),
+                "aria-label": t("entrySidebar"),
+                onClick: function () { togglePosition("sidebar"); },
+              })),
+            h("div", { className: "dnt-srow" },
+              h("div", { className: "dnt-s-l" },
+                h("div", { className: "dnt-s-n" }, t("entryHeader")),
+                h("div", { className: "dnt-s-d" }, t("entryHeaderHint"))),
+              h("button", {
+                type: "button",
+                className: "dnt-sw",
+                role: "switch",
+                "aria-checked": isPositionOn("header"),
+                "aria-label": t("entryHeader"),
+                onClick: function () { togglePosition("header"); },
+              })),
             h("div", { className: "dnt-srow" },
               h("div", { className: "dnt-s-l" },
                 h("div", { className: "dnt-s-n" }, t("hoverCount")),
@@ -1637,6 +1770,51 @@ window.__ModuleLoader__.load({
 
       ctx.effect(installStyles, "note-tabs: styles");
 
+      // 入口槽按需挂载：左栏的每一行来自 slots.entriesOfSlot('sidebar.panellist')，
+      // 组件返回 null 仍会留下一个空按钮，所以关闭位置时必须真的注销注册。
+      var entryInjections = { sidebar: null, header: null };
+
+      function mountEntry(kind) {
+        if (entryInjections[kind] !== null) return;
+        if (kind === "sidebar") {
+          entryInjections[kind] = slots.inject("sidebar.panellist", function () {
+            return slots.register(
+              { name: "sidebar.panellist", id: PANEL_ID, order: 45, label: function () { return t("title"); } },
+              function (props) { return h(SidebarEntry, props); },
+            );
+          });
+        } else {
+          entryInjections[kind] = slots.inject("conversation.session.header.utilities", function () {
+            return slots.register(
+              {
+                name: "conversation.session.header.utilities",
+                id: "note-tabs.header",
+                // utilities 内升序；100 让它在宿主 utilities 的最右端，紧邻右侧栏展开按钮。
+                order: 100,
+                label: function () { return t("title"); },
+              },
+              function (props) { return h(HeaderEntry, props); },
+            );
+          });
+        }
+      }
+
+      function unmountEntry(kind) {
+        var dispose = entryInjections[kind];
+        if (dispose === null) return;
+        entryInjections[kind] = null;
+        try { dispose(); } catch (error) { /* 重复卸载不做处理 */ }
+      }
+
+      function syncEntries() {
+        var configured = state.store.settings && state.store.settings.entryPositions;
+        var positions = Array.isArray(configured) ? configured : ENTRY_POSITIONS;
+        if (positions.indexOf("sidebar") >= 0) mountEntry("sidebar"); else unmountEntry("sidebar");
+        if (positions.indexOf("header") >= 0) mountEntry("header"); else unmountEntry("header");
+      }
+
+      var unsubscribeEntries = subscribe(function () { syncEntries(); });
+
       ctx.effect(function () {
         return function () {
           if (anchorTimer) { clearTimeout(anchorTimer); anchorTimer = 0; }
@@ -1644,7 +1822,11 @@ window.__ModuleLoader__.load({
           for (var index = 0; index < state.toasts.length; index += 1) {
             if (state.toasts[index].timer) clearTimeout(state.toasts[index].timer);
           }
+          unsubscribeEntries();
+          unmountEntry("sidebar");
+          unmountEntry("header");
           state.hover = HOVER_CLOSED;
+          hoverAnchorEl = null;
           listeners.length = 0;
         };
       }, "note-tabs: client state");
@@ -1656,17 +1838,17 @@ window.__ModuleLoader__.load({
         );
       });
 
-      slots.inject("sidebar.panellist", function () {
-        return slots.register(
-          { name: "sidebar.panellist", id: PANEL_ID, order: 45, label: function () { return t("title"); } },
-          function (props) { return h(SidebarEntry, props); },
-        );
-      });
-
       slots.inject("main", function () {
         return slots.register(
           { name: "main", key: PANEL_ID },
           function (props) { return h(NotesPanel, props); },
+        );
+      });
+
+      slots.inject("settings.section", function () {
+        return slots.register(
+          { name: "settings.section", id: "note-tabs", order: 40, label: function () { return t("title"); } },
+          function (props) { return h(SettingsBody, props); },
         );
       });
 
@@ -1686,6 +1868,7 @@ window.__ModuleLoader__.load({
         return [disposeCard, disposeModal, disposeToasts];
       });
 
+      syncEntries();
       load();
     }
 

@@ -501,14 +501,25 @@ html[data-noanim="true"] *{transition:none!important;animation:none!important}
   <div class="sheet-body">
     <div class="sheet-form">
       <h3>便签设置</h3>
-      <p class="s-sub">三项偏好，写入 profile 的插件配置</p>
+      <p class="s-sub">四项偏好：含两个入口位置，可多选也可全关，改动立即生效</p>
       <div class="srow">
-        <div class="s-l"><div class="s-n">悬浮框条数</div><div class="s-d">侧栏图标 hover 时列出最近几条</div></div>
+        <div class="s-l"><div class="s-n">入口显示位置</div><div class="s-d">可多选，也可全部关闭</div></div>
+      </div>
+      <div class="srow">
+        <div class="s-l"><div class="s-n">左侧菜单</div><div class="s-d">左栏图标：hover 出浮层，点击进入详情页</div></div>
+        <button class="sw" id="set-sidebar" role="switch" aria-checked="true" aria-label="左侧菜单"></button>
+      </div>
+      <div class="srow">
+        <div class="s-l"><div class="s-n">标题栏右侧</div><div class="s-d">展开/关闭右侧栏按钮左侧：点击出气泡</div></div>
+        <button class="sw" id="set-header" role="switch" aria-checked="true" aria-label="标题栏右侧"></button>
+      </div>
+      <div class="srow">
+        <div class="s-l"><div class="s-n">悬浮框条数</div><div class="s-d">左栏图标 hover 时列出最近几条</div></div>
         <input type="number" id="set-count" min="3" max="30" step="1" value="10" />
       </div>
       <div class="srow">
-        <div class="s-l"><div class="s-n">启用悬浮框</div><div class="s-d">关闭后 hover 不弹出，仅点击进入详情</div></div>
-        <button class="sw" id="set-hover" role="switch" aria-checked="true" aria-label="启用悬浮框"></button>
+        <div class="s-l"><div class="s-n">启用左栏悬浮框</div><div class="s-d">只影响左栏 hover，不影响标题栏气泡</div></div>
+        <button class="sw" id="set-hover" role="switch" aria-checked="true" aria-label="启用左栏悬浮框"></button>
       </div>
       <div class="srow">
         <div class="s-l"><div class="s-n">默认视图</div><div class="s-d">详情页打开时的排列方式</div></div>
@@ -594,6 +605,7 @@ const state = {
   editing: null,
   hoverEnabled: true,
   hoverCount: 10,
+  entryPositions: ['sidebar', 'header'],
   main: 'conversation',   // conversation | notes
 };
 
@@ -715,6 +727,7 @@ const ICON = {
   pencil: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4.5 19.5h4l10-10a2.1 2.1 0 0 0-3-3l-10 10z"/><path d="M13.5 6.5l4 4"/></svg>`,
   search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>`,
   gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="2.8"/><path d="M12 3.5v2M12 18.5v2M4.9 7.6l1.7 1M17.4 15.4l1.7 1M4.9 16.4l1.7-1M17.4 8.6l1.7-1" stroke-linecap="round"/></svg>`,
+  note: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H17a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6.5A1.5 1.5 0 0 1 5 19.5z"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4" stroke-linecap="round"/></svg>`,
 };
 
 /* ── 侧栏 ─────────────────────────────────────────────────────────────────── */
@@ -866,6 +879,7 @@ function renderNotes() {
     <div class="m-head">
       <span class="crumb">插件</span><span class="ttl">便签</span>
       <span class="sp"></span>
+      <button class="icon-btn" id="hdr-notes" aria-label="便签气泡" title="便签气泡（点击展开）">${ICON.note}</button>
       <button class="icon-btn" id="open-settings" aria-label="便签设置" title="便签设置">${ICON.gear}</button>
     </div>
     <div class="notes"><div class="notes-in">
@@ -883,6 +897,7 @@ function renderNotes() {
       ${body}
     </div></div>`;
 
+  applyEntryPositions();
   main.querySelector('#q').addEventListener('input', (e) => {
     state.query = e.target.value;
     const pos = e.target.selectionStart;
@@ -894,6 +909,11 @@ function renderNotes() {
     b.addEventListener('click', () => { state.view = b.dataset.view; renderNotes(); });
   }
   main.querySelector('#open-settings').addEventListener('click', openSheet);
+  main.querySelector('#hdr-notes').addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (hoverEl.dataset.open === 'true' && hoverEl.dataset.placement === 'header') hideHover();
+    else showHover(main.querySelector('#hdr-notes'));
+  });
   for (const b of main.querySelectorAll('[data-act]')) {
     b.addEventListener('click', () => {
       const id = b.dataset.note;
@@ -977,20 +997,41 @@ const railNotes = document.getElementById('rail-notes');
 let hoverTimer = null;
 let hideTimer = null;
 
-function showHover() {
-  if (!state.hoverEnabled) return;
+function showHover(anchor) {
+  // 左栏浮层受 hoverEnabled 控制；标题栏气泡是点击触发，不受它影响。
+  if (!anchor && !state.hoverEnabled) return;
   renderHover();
-  const r = railNotes.getBoundingClientRect();
-  const top = Math.min(r.top + 2, window.innerHeight - 180);
+  const r = (anchor || railNotes).getBoundingClientRect();
+  let top;
+  let left;
+  if (anchor) {
+    // 标题栏按钮在右上角：向左下展开，右缘不越过按钮与视口。
+    top = r.bottom + 8;
+    left = Math.max(8, Math.min(r.right - 352, window.innerWidth - 360));
+    hoverEl.dataset.placement = 'header';
+  } else {
+    top = Math.min(r.top + 2, window.innerHeight - 180);
+    left = r.right + 10;
+    hoverEl.dataset.placement = 'sidebar';
+  }
   hoverEl.style.top = Math.max(8, top) + 'px';
-  hoverEl.style.left = (r.right + 10) + 'px';
+  hoverEl.style.left = left + 'px';
   hoverEl.dataset.open = 'true';
-  railNotes.setAttribute('aria-expanded', 'true');
+  (anchor || railNotes).setAttribute('aria-expanded', 'true');
 }
 function hideHover() {
   hoverEl.dataset.open = 'false';
   railNotes.setAttribute('aria-expanded', 'false');
+  const hdr = document.getElementById('hdr-notes');
+  if (hdr) hdr.setAttribute('aria-expanded', 'false');
 }
+// 点击外部关闭（捕获阶段），面板与两个触发按钮都算内部。
+document.addEventListener('pointerdown', (event) => {
+  if (hoverEl.dataset.open !== 'true') return;
+  const hdr = document.getElementById('hdr-notes');
+  if (hoverEl.contains(event.target) || railNotes.contains(event.target) || (hdr && hdr.contains(event.target))) return;
+  hideHover();
+}, true);
 railNotes.addEventListener('pointerenter', () => {
   clearTimeout(hideTimer);
   clearTimeout(hoverTimer);
@@ -1051,6 +1092,8 @@ function renderSheetPreview() {
 function openSheet() {
   document.getElementById('set-count').value = state.hoverCount;
   document.getElementById('set-hover').setAttribute('aria-checked', String(state.hoverEnabled));
+  document.getElementById('set-sidebar').setAttribute('aria-checked', String(state.entryPositions.includes('sidebar')));
+  document.getElementById('set-header').setAttribute('aria-checked', String(state.entryPositions.includes('header')));
   document.getElementById('set-view').value = state.view;
   renderSheetPreview();
   scrim.dataset.open = 'true';
@@ -1067,6 +1110,15 @@ document.getElementById('set-count').addEventListener('input', (e) => {
   state.hoverCount = v;
   renderSheetPreview();
 });
+function toggleEntryPosition(position, button) {
+  const on = !state.entryPositions.includes(position);
+  state.entryPositions = ['sidebar', 'header'].filter((item) => item === position ? on : state.entryPositions.includes(item));
+  button.setAttribute('aria-checked', String(on));
+  applyEntryPositions();
+}
+document.getElementById('set-sidebar').addEventListener('click', (e) => toggleEntryPosition('sidebar', e.currentTarget));
+document.getElementById('set-header').addEventListener('click', (e) => toggleEntryPosition('header', e.currentTarget));
+
 document.getElementById('set-hover').addEventListener('click', (e) => {
   state.hoverEnabled = !state.hoverEnabled;
   e.currentTarget.setAttribute('aria-checked', String(state.hoverEnabled));
@@ -1105,7 +1157,14 @@ function refresh() {
   renderHover();
   railNotes.setAttribute('aria-current', String(state.main === 'notes'));
 }
-function render() { refresh(); }
+function render() { applyEntryPositions(); refresh(); }
+
+function applyEntryPositions() {
+  const sidebar = document.getElementById('rail-notes');
+  if (sidebar) sidebar.style.display = state.entryPositions.includes('sidebar') ? '' : 'none';
+  const header = document.getElementById('hdr-notes');
+  if (header) header.style.display = state.entryPositions.includes('header') ? '' : 'none';
+}
 
 document.getElementById('d-theme').addEventListener('click', () => {
   const h = document.documentElement;

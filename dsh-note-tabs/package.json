@@ -1,6 +1,6 @@
 {
   "name": "dsh-note-tabs",
-  "description": "把每轮回答收藏成 Markdown 便签：回答下收藏按钮、侧栏悬浮窗、按工作区分组的详情页（设置作为页内 tab）。",
+  "description": "把每轮回答收藏成 Markdown 便签：回答下收藏按钮、左栏浮层与标题栏气泡、按工作区分组的详情页，配置在 DSH 设置页。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
