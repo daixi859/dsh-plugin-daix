@@ -58,6 +58,17 @@ window.__ModuleLoader__.load({
 .ps-row select:disabled{opacity:.55;cursor:default}
 .ps-note{margin:0;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary,#8a8a85)}
 .ps-set-err{margin:0;font-size:11px;line-height:1.6;color:var(--dsw-alias-state-error,#d9483b)}
+.ps-sec{display:flex;flex-direction:column;gap:8px}
+.ps-limits{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ps-limits label{font-size:12px;display:flex;align-items:center;gap:6px}
+.ps-limits input{width:110px;font:inherit;font-size:12px;padding:5px 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.14));background:var(--dsw-alias-bg-layer,#fff);color:var(--dsw-alias-label-primary,#1a1a1a)}
+.ps-tpl{display:flex;flex-direction:column;gap:6px}
+.ps-tpl-area,.ps-samp{width:100%;box-sizing:border-box;min-height:120px;max-height:40vh;resize:vertical;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.55;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.14));border-radius:8px;background:var(--dsw-alias-bg-layer,#fff);color:var(--dsw-alias-label-primary,#1a1a1a);outline:none}
+.ps-samp{min-height:56px}
+.ps-tpl-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ps-out{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));border-radius:8px;padding:8px 10px;background:var(--dsw-alias-bg-layer,#fff)}
+.ps-out-h{font-size:11px;color:var(--dsw-alias-label-secondary,#8a8a85);margin-bottom:4px}
+.ps-out-b{margin:0;white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:12px;line-height:1.55;max-height:280px;overflow:auto}
 `;
     var tagId = "dsh-prompt-suggest/prompt-suggest.css";
     if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
@@ -308,11 +319,12 @@ window.__ModuleLoader__.load({
     }
 
     // ── 设置页（settings.section）────────────────────────────────────────────
-    // 两个下拉：用哪个模型、用哪个思考强度。留空 = 跟随会话 / 模型默认。
-    // 思考档位由模型自己公布（DeepSeek 是 off/low/high/max），不给没有推理能力
-    // 的模型显示这一项，避免选出会被 prepareCall 拒绝的值。
+    // 四块：模型与思考强度（路由）、长度上限、两个模式的提示词模板（含预览与试跑）、样例素材。
+    // 预览与试跑读取编辑框当前内容（可未保存），不写输入框、不改会话。
     var SETTINGS_ROUTE = "/plugins/prompt-suggest/settings";
     var MODELS_ROUTE = "/plugins/prompt-suggest/models";
+    var PREVIEW_ROUTE = "/plugins/prompt-suggest/preview";
+    var TRIAL_ROUTE = "/plugins/prompt-suggest/trial";
 
     // 宿主公布的是 Off / Low / High / Max 这类英文名。界面其余文案都是中文，
     // 直接透传会中英混排，所以这里做一层显示名映射；未知档位才回落原名。
@@ -322,53 +334,203 @@ window.__ModuleLoader__.load({
       return typeof known === "string" ? known : (effort.name || effort.id);
     }
 
+    var MODE_META = {
+      suggest: { title: "生成建议", hint: "输入框为空时使用。需要占位符 {{userText}}、{{assistantText}}。" },
+      polish: { title: "润色草稿", hint: "输入框有草稿时使用。需要占位符 {{draft}}、{{userText}}、{{assistantText}}、{{polishCap}}。" },
+    };
+    var PLACEHOLDER_HELP = "占位符写成 {{name}}：{{userText}} 最近一条用户消息，{{assistantText}} 代理最近一次回复，{{draft}} 草稿，{{polishCap}} 润色长度上限（数字，由代码替换）。缺少必需占位符时拒绝保存。";
+
+    function jsonPost(payload) {
+      return {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      };
+    }
+
+    // 单个模式的模板编辑器：自己持有编辑框文本与预览/试跑结果。
+    // stored 是已保存的模板（空串 = 用内置默认），编辑框在它变化时跟随。
+    function TemplateEditor(props) {
+      var mode = props.mode;
+      var stored = props.stored;
+      var defaultText = props.defaultText;
+      var samples = props.samples;
+      var textHook = React.useState(stored || defaultText || "");
+      var text = textHook[0];
+      var setText = textHook[1];
+      var busyHook = React.useState(null);
+      var busy = busyHook[0];
+      var setBusy = busyHook[1];
+      var msgHook = React.useState(null);
+      var msg = msgHook[0];
+      var setMsg = msgHook[1];
+      var outHook = React.useState(null);
+      var out = outHook[0];
+      var setOut = outHook[1];
+
+      React.useEffect(function () {
+        setText(stored || defaultText || "");
+      }, [stored, defaultText]);
+
+      var requestBody = function () {
+        return {
+          mode: mode,
+          template: text,
+          draft: samples.draft,
+          userText: samples.userText,
+          assistantText: samples.assistantText,
+        };
+      };
+
+      var doPreview = function () {
+        setBusy("preview"); setMsg(null); setOut(null);
+        requestJson(PREVIEW_ROUTE, jsonPost(requestBody()))
+          .then(function (r) { setOut({ title: "预览（未调用模型）", body: r.prompt }); })
+          .catch(function (e) { setMsg({ kind: "error", text: e.message }); })
+          .then(function () { setBusy(null); });
+      };
+
+      var doTrial = function () {
+        setBusy("trial"); setMsg(null); setOut(null);
+        requestJson(TRIAL_ROUTE, jsonPost(requestBody()))
+          .then(function (r) {
+            var rt = r.route || {};
+            var where = (rt.provider || "?") + " / " + (rt.model || "?")
+              + (rt.reasoningEffort ? "（思考：" + rt.reasoningEffort + "）" : "");
+            setOut({ title: "试跑结果 · " + where + "（不写入输入框）", body: r.text });
+          })
+          .catch(function (e) { setMsg({ kind: "error", text: e.message }); })
+          .then(function () { setBusy(null); });
+      };
+
+      var doSave = function () {
+        var key = mode === "suggest" ? "suggestPrompt" : "polishPrompt";
+        // 与内置默认一致时存空串：之后内置默认更新时仍能跟随。
+        var value = text.trim() === defaultText.trim() ? "" : text;
+        var patch = {}; patch[key] = value;
+        setBusy("save"); setMsg(null);
+        requestJson(SETTINGS_ROUTE, jsonPost(patch))
+          .then(function (r) {
+            setMsg({ kind: "ok", text: "已保存，正常按钮从下一次生成开始使用" });
+            props.onSaved(r.settings);
+          })
+          .catch(function (e) { setMsg({ kind: "error", text: e.message }); })
+          .then(function () { setBusy(null); });
+      };
+
+      var doRestore = function () {
+        var key = mode === "suggest" ? "suggestPrompt" : "polishPrompt";
+        var patch = {}; patch[key] = "";
+        setBusy("save"); setMsg(null);
+        requestJson(SETTINGS_ROUTE, jsonPost(patch))
+          .then(function (r) {
+            setText(defaultText);
+            setMsg({ kind: "ok", text: "已恢复为内置默认" });
+            props.onSaved(r.settings);
+          })
+          .catch(function (e) { setMsg({ kind: "error", text: e.message }); })
+          .then(function () { setBusy(null); });
+      };
+
+      var meta = MODE_META[mode];
+      var disabled = busy !== null;
+      return React.createElement("div", { className: "ps-tpl" },
+        React.createElement("div", { className: "ps-row-n" }, meta.title),
+        React.createElement("div", { className: "ps-row-d" }, meta.hint),
+        React.createElement("textarea", {
+          className: "ps-tpl-area", value: text, spellCheck: false,
+          "aria-label": meta.title + "提示词模板",
+          onChange: function (e) { setText(e.target.value); },
+        }),
+        React.createElement("div", { className: "ps-tpl-bar" },
+          React.createElement("span", { className: "ps-hint" }, text.length + " 字 / 上限 " + props.templateMaxChars),
+          React.createElement("button", { type: "button", className: "ps-btn2", disabled: disabled, onClick: doRestore }, "恢复默认"),
+          React.createElement("button", { type: "button", className: "ps-btn2", disabled: disabled, onClick: doPreview }, busy === "preview" ? "组装中…" : "预览"),
+          React.createElement("button", { type: "button", className: "ps-btn2", disabled: disabled, onClick: doTrial }, busy === "trial" ? "试跑中…" : "试跑"),
+          React.createElement("button", { type: "button", className: "ps-btn2 ps-primary", disabled: disabled, onClick: doSave }, "保存")),
+        msg ? React.createElement("p", { className: msg.kind === "error" ? "ps-set-err" : "ps-note" }, msg.text) : null,
+        out ? React.createElement("div", { className: "ps-out" },
+          React.createElement("div", { className: "ps-out-h" }, out.title),
+          React.createElement("pre", { className: "ps-out-b" }, out.body)) : null);
+    }
+
     function SettingsSection() {
       var settingsHook = React.useState(null);
       var settings = settingsHook[0];
       var setSettings = settingsHook[1];
+      var defaultsHook = React.useState(null);
+      var defaults = defaultsHook[0];
+      var setDefaults = defaultsHook[1];
       var modelsHook = React.useState(null);
       var models = modelsHook[0];
       var setModels = modelsHook[1];
+      var samplesHook = React.useState(null);
+      var samples = samplesHook[0];
+      var setSamples = samplesHook[1];
       var errorHook = React.useState(null);
       var error = errorHook[0];
       var setError = errorHook[1];
       var savingHook = React.useState(false);
       var saving = savingHook[0];
       var setSaving = savingHook[1];
+      var draftMaxHook = React.useState("");
+      var draftMaxText = draftMaxHook[0];
+      var setDraftMaxText = draftMaxHook[1];
+      var templateMaxHook = React.useState("");
+      var templateMaxText = templateMaxHook[0];
+      var setTemplateMaxText = templateMaxHook[1];
 
       React.useEffect(function () {
         var alive = true;
         requestJson(SETTINGS_ROUTE, { credentials: "same-origin" })
-          .then(function (body) { if (alive) setSettings(body.settings); })
+          .then(function (body) {
+            if (!alive) return;
+            setSettings(body.settings);
+            setDefaults(body.defaults);
+          })
           .catch(function (e) { if (alive) setError(e.message); });
         requestJson(MODELS_ROUTE, { credentials: "same-origin" })
           .then(function (body) { if (alive) setModels(body.groups || []); })
-          .catch(function (e) { if (alive) setModels([]); });
+          .catch(function () { if (alive) setModels([]); });
         return function () { alive = false; };
       }, []);
+
+      // 样例素材只在首次拿到默认值时填入，之后由用户编辑，不会被刷新覆盖。
+      React.useEffect(function () {
+        if (defaults && samples === null) setSamples(defaults.samples);
+      }, [defaults, samples]);
+
+      // 上限编辑框跟随已保存的值（首次加载与每次保存后）。
+      React.useEffect(function () {
+        if (!settings) return;
+        setDraftMaxText(String(settings.draftMaxChars));
+        setTemplateMaxText(String(settings.templateMaxChars));
+      }, [settings && settings.draftMaxChars, settings && settings.templateMaxChars]);
 
       var save = function (patch) {
         setSaving(true);
         setError(null);
-        requestJson(SETTINGS_ROUTE, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(patch),
-        })
+        requestJson(SETTINGS_ROUTE, jsonPost(patch))
           .then(function (body) { setSettings(body.settings); })
           .catch(function (e) { setError(e.message); })
           .then(function () { setSaving(false); });
       };
 
-      if (!settings) {
+      var setSample = function (key, value) {
+        setSamples(function (cur) {
+          var next = { draft: cur.draft, userText: cur.userText, assistantText: cur.assistantText };
+          next[key] = value;
+          return next;
+        });
+      };
+
+      if (!settings || !defaults) {
         return React.createElement("div", { className: "ps-set" },
           React.createElement("p", { className: "ps-set-sub" }, error || "正在读取设置…"));
       }
 
-      // 选中模型公布的档位。选「跟随当前会话」时没有具体模型，退化成所有渠道档位的并集：
-      // 否则这一项只剩「模型默认」，用户在想跟随会话时根本选不了档位。
-      // 并集只决定「列哪些选项」，真正是否支持由 host 侧按实际模型再过滤一次。
+      // 选中模型公布的档位。选「跟随当前会话」时没有具体模型，退化成所有渠道档位的并集。
       var selected = null;
       if (models) {
         for (var g = 0; g < models.length; g += 1) {
@@ -396,9 +558,6 @@ window.__ModuleLoader__.load({
         efforts = Object.keys(union).map(function (id) { return union[id]; });
       }
       var effortHidden = Array.isArray(efforts) && efforts.length === 0;
-      // 存着的档位可能来自另一个模型（换了模型后常见），或模型改版后下线。
-      // 不补一条 option 的话，select 的 value 匹配不到任何 option，浏览器会显示
-      // 第一项「模型默认」——界面看起来是默认，磁盘里却还是旧值，属于静默不一致。
       var effortKnown = efforts === null
         || efforts.some(function (effort) { return effort.id === settings.reasoningEffort; });
       var effortStale = !effortKnown && settings.reasoningEffort !== "";
@@ -406,8 +565,6 @@ window.__ModuleLoader__.load({
       var modelValue = settings.provider && settings.model
         ? settings.provider + "\u0000" + settings.model
         : "";
-      // 已保存的模型可能来自已卸载的渠道，或已经从目录里下线。
-      // 不补一条 option，浏览器会回落到首项「跟随当前会话」——界面说跟随，磁盘里却还是旧模型。
       var modelKnown = models === null || modelValue === "" || (models || []).some(function (group) {
         return group.id === settings.provider && (group.models || []).some(function (model) {
           return model.id === settings.model;
@@ -415,9 +572,16 @@ window.__ModuleLoader__.load({
       });
       var modelStale = !modelKnown && modelValue !== "";
 
+      var limitMax = defaults.limitMax;
+      var saveLimits = function () {
+        save({ draftMaxChars: Number(draftMaxText), templateMaxChars: Number(templateMaxText) });
+      };
+      var onTemplateSaved = function (next) { setSettings(next); };
+      var samplesReady = samples || { draft: "", userText: "", assistantText: "" };
+
       return React.createElement("div", { className: "ps-set" },
         React.createElement("p", { className: "ps-set-sub" },
-          "这里设置的是提示词建议按钮自己用的模型与思考强度，只影响这个按钮，不影响正常对话。"),
+          "这里设置的是提示词建议按钮自己用的模型、思考强度、提示词模板与长度上限，只影响这个按钮，不影响正常对话。"),
         React.createElement("div", { className: "ps-row" },
           React.createElement("div", { className: "ps-row-l" },
             React.createElement("div", { className: "ps-row-n" }, "用哪个模型"),
@@ -430,13 +594,13 @@ window.__ModuleLoader__.load({
               var raw = event.target.value;
               if (raw === "") { save({ provider: "", model: "" }); return; }
               var split = raw.indexOf("\u0000");
+              // 用 U+0000 而不是 "::"：ID 里可能出现冒号，分隔符必须是不可能出现的字符。
               save({ provider: raw.slice(0, split), model: raw.slice(split + 1) });
             },
           },
             React.createElement("option", { value: "" }, "跟随当前会话"),
             modelStale
-              ? React.createElement("option", { value: modelValue },
-                  settings.model + "（已不可用）")
+              ? React.createElement("option", { value: modelValue }, settings.model + "（已不可用）")
               : null,
             (models || []).map(function (group) {
               return React.createElement("optgroup", { key: group.id, label: group.name },
@@ -455,7 +619,7 @@ window.__ModuleLoader__.load({
                 ? "所选模型不支持调节思考强度，这一项不生效。"
                 : effortStale
                   ? "已保存的档位不在该模型公布的列表内，实际会按模型默认执行。选一个档位即可修正。"
-                  : "润色时使用。选到最低档可以更快、更省 token；生成建议始终不启用思考。")),
+                  : "生成与试跑都使用这个档位。选「关闭」就是真的不思考。")),
           React.createElement("select", {
             value: settings.reasoningEffort,
             disabled: saving || effortHidden,
@@ -464,16 +628,66 @@ window.__ModuleLoader__.load({
           },
             React.createElement("option", { value: "" }, "模型默认"),
             effortStale
-              ? React.createElement("option", { value: settings.reasoningEffort },
-                  settings.reasoningEffort + "（模型不支持）")
+              ? React.createElement("option", { value: settings.reasoningEffort }, settings.reasoningEffort + "（模型不支持）")
               : null,
             (efforts || []).map(function (effort) {
               return React.createElement("option", { key: effort.id, value: effort.id }, effortLabel(effort));
             }))),
+        React.createElement("div", { className: "ps-sec" },
+          React.createElement("div", { className: "ps-row-n" }, "长度上限"),
+          React.createElement("div", { className: "ps-row-d" },
+            "草稿上限：润色时整段草稿的最大字符数，超出则拒绝。模板上限：自定义提示词的最大字符数。",
+            "可填 1 到 " + limitMax + " 的整数，不设下限。草稿上限调大后，超出模型上下文窗口的请求会失败（502），详情见 ~/.dsh/storages/prompt-suggest/last-error.json。"),
+          React.createElement("div", { className: "ps-limits" },
+            React.createElement("label", null, "草稿上限 ",
+              React.createElement("input", {
+                type: "number", step: 1, max: limitMax, value: draftMaxText, disabled: saving,
+                "aria-label": "草稿上限",
+                onChange: function (e) { setDraftMaxText(e.target.value); },
+              })),
+            React.createElement("label", null, "模板上限 ",
+              React.createElement("input", {
+                type: "number", step: 1, max: limitMax, value: templateMaxText, disabled: saving,
+                "aria-label": "模板上限",
+                onChange: function (e) { setTemplateMaxText(e.target.value); },
+              })),
+            React.createElement("button", { type: "button", className: "ps-btn2 ps-primary", disabled: saving, onClick: saveLimits }, "保存上限"),
+            React.createElement("button", {
+              type: "button", className: "ps-btn2", disabled: saving,
+              onClick: function () { save({ draftMaxChars: defaults.draftMaxChars, templateMaxChars: defaults.templateMaxChars }); },
+            }, "恢复默认"))),
+        React.createElement(TemplateEditor, {
+          mode: "suggest", stored: settings.suggestPrompt, defaultText: defaults.suggestPrompt,
+          samples: samplesReady, templateMaxChars: settings.templateMaxChars, onSaved: onTemplateSaved,
+        }),
+        React.createElement(TemplateEditor, {
+          mode: "polish", stored: settings.polishPrompt, defaultText: defaults.polishPrompt,
+          samples: samplesReady, templateMaxChars: settings.templateMaxChars, onSaved: onTemplateSaved,
+        }),
+        React.createElement("div", { className: "ps-sec" },
+          React.createElement("div", { className: "ps-row-n" }, "样例素材"),
+          React.createElement("div", { className: "ps-row-d" }, "预览与试跑使用这三段，两个模式共用。只影响这里，不写入会话。"),
+          React.createElement("div", { className: "ps-row-d" }, PLACEHOLDER_HELP),
+          React.createElement("div", { className: "ps-row-d" }, "样例草稿"),
+          React.createElement("textarea", {
+            className: "ps-samp", value: samplesReady.draft, spellCheck: false, "aria-label": "样例草稿",
+            onChange: function (e) { setSample("draft", e.target.value); },
+          }),
+          React.createElement("div", { className: "ps-row-d" }, "样例用户消息"),
+          React.createElement("textarea", {
+            className: "ps-samp", value: samplesReady.userText, spellCheck: false, "aria-label": "样例用户消息",
+            onChange: function (e) { setSample("userText", e.target.value); },
+          }),
+          React.createElement("div", { className: "ps-row-d" }, "样例代理回复"),
+          React.createElement("textarea", {
+            className: "ps-samp", value: samplesReady.assistantText, spellCheck: false, "aria-label": "样例代理回复",
+            onChange: function (e) { setSample("assistantText", e.target.value); },
+          })),
         error !== null ? React.createElement("p", { className: "ps-set-err" }, error) : null,
         React.createElement("p", { className: "ps-note" },
-          "保存后立即生效，无需重启。"));
+          "模板与上限保存后立即生效，无需重启。预览与试跑直接用编辑框内容，不需要先保存。"));
     }
+
 
     // ── 插件入口 ────────────────────────────────────────────────────────────
     var inject = ["slots"];

@@ -1,30 +1,38 @@
 // dsh-prompt-suggest — host 面
 //
-// 职责：一条 HTTP 路由 + 一次辅助 LLM 调用。不碰会话存储之外的状态。
+// 职责：HTTP 路由 + 一次辅助 LLM 调用。不碰会话存储之外的状态。
 //
-// - 路由：POST /plugins/prompt-suggest/generate
-//     请求 { sessionId, draft, provider, model, reasoningEffort? }
+// - 生成：POST /plugins/prompt-suggest/generate
+//     请求 { sessionId, draft, provider?, model?, reasoningEffort? }
 //     响应 { ok: true, text } | { ok: false, error }
-//   GET  /plugins/prompt-suggest/settings   读偏好（模型 + 思考强度）
-//   POST /plugins/prompt-suggest/settings   写偏好（只接受已知字段）
-//   GET  /plugins/prompt-suggest/models     可选模型与各自的思考档位
-// - 会话上下文：ctx.sessionQuery.readSurface(sessionId) 取当前模型表面事件，
-//   倒序找最近一轮 user/message + assistant/message（lib/prompt.js 提取）。
-// - 模型调用：ctx.get('llm').prepareCall({ provider, model, maxTokens, reasoningEffort? })
-//   → call.stream({ ...call.config, messages, system, signal })；只拼 text-delta。
-// - mode:draft 为空 → 'suggest'（生成建议）；非空 → 'polish'（润色草稿）。
-// - 诊断日志：~/.dsh/storages/prompt-suggest/last-error.json（最近一次失败）。
+//     mode:draft 为空 → 'suggest'；非空 → 'polish'。模板取已保存的设置，没有则用内置默认。
+// - 预览：POST /plugins/prompt-suggest/preview（不调用模型）
+//     请求 { mode, template, draft, userText, assistantText }，template 为编辑框当前内容（可未保存）
+//     响应 { ok: true, prompt }
+// - 试跑：POST /plugins/prompt-suggest/trial（调用模型，不写会话、不写输入框）
+//     请求同预览；路由为设置页固定模型，否则全局默认；思考强度沿用设置页
+//     响应 { ok: true, text, route }
+// - 设置：GET/POST /plugins/prompt-suggest/settings（POST 先校验再落盘）
+// - 模型目录：GET /plugins/prompt-suggest/models
+// - 诊断日志：~/.dsh/storages/prompt-suggest/last-error.json（最近一次失败，含空输出）。
+//
+// 输出不做清洗：模型返回什么就是什么，只拒绝空输出。两种输出都先呈现给用户再生效。
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
 import {
+  DEFAULT_TEMPLATES,
+  DRAFT_MAX_CHARS,
   GENERATE_TIMEOUT_MS,
+  LIMIT_MAX_CHARS,
+  SAMPLES,
+  TEMPLATE_MAX_CHARS,
   buildPrompt,
   draftTooLong,
   extractLastTurnText,
-  sanitizeOutput,
+  validateTemplate,
 } from './prompt.js';
 import {
   DEFAULT_SETTINGS,
@@ -32,23 +40,19 @@ import {
   mergeSettings,
   normalizeSettings,
   pickReasoningEffort,
+  validateSettingsPatch,
 } from './settings.js';
 
 export const name = 'prompt-suggest';
 
 /**
- * 无 Config 项：偏好（模型与思考强度）存在插件自己的 settings.json 里，
+ * 无 Config 项：偏好（模型、思考强度、模板、上限）存在插件自己的 settings.json 里，
  * 由设置页通过 /plugins/prompt-suggest/settings 读写，不占 profile 的 config。
  */
 export const Config = undefined;
 
-// 输出 token 与字符上限必须自洽。中文 1 字≈1+ token。
-//
-// suggest 曾经只有 256：那时它不传思考档位，以为「不传＝不思考」，实际是让模型
-// 用自己的默认档（本机 deepseek-v4.1-flash 的 defaultEffort 是 high）——256 token
-// 全被思考吃掉，20 秒内等不到一个 text-delta，最终以「生成超时」失败。
-// 现在给出足够余量：建议本身 ≤120 字符只占约 120 token，剩下的留给思考。
-// maxTokens 是上限不是计费，模型提前停下不会多花。
+// 输出 token 上限。maxTokens 是上限不是计费，模型提前停下不会多花。
+// suggest 留足余量给思考：建议本身约 60 字，其余预算由模型自己的思考消耗。
 const SUGGEST_MAX_TOKENS = 4096;
 const POLISH_MAX_TOKENS = 16384;
 const REQUEST_BODY_MAX_BYTES = 512 * 1024;
@@ -84,8 +88,7 @@ function readBody(req, maxBytes = REQUEST_BODY_MAX_BYTES) {
 }
 
 /**
- * 读完请求体并解析成 JSON 对象。
- * 三条写路由都要做同一件事，失败原因也相同，抽成一个地方以免三份措辞漂移。
+ * 读完请求体并解析成 JSON 对象。四条写路由都要做同一件事，失败原因也相同，抽成一个地方。
  * @param {import('node:http').IncomingMessage} req
  * @returns {Promise<{ value: object } | { status: number, error: string }>}
  */
@@ -112,6 +115,11 @@ function fail(res, status, message) {
   sendJson(res, status, { ok: false, error: message });
 }
 
+function methodNotAllowed(req, res, allow) {
+  res.writeHead(405, { allow, 'content-length': 0 });
+  res.end();
+}
+
 // ── 诊断日志 ──────────────────────────────────────────────────────────────────
 
 function dshHome() {
@@ -128,11 +136,11 @@ async function recordFailure(record) {
       ...record,
     }, null, 2), 'utf8');
   } catch {
-    // 诊断日志只是旁路：写失败不影响本次生成结果，也不该反噬主流程
+    // 诊断日志只是旁路：写失败不影响本次结果，也不该反噬主流程
   }
 }
 
-// ── 偏好持久化：模型路由与思考强度 ────────────────────────────────────────────
+// ── 偏好持久化 ────────────────────────────────────────────────────────────────
 
 function settingsPath() {
   return join(dshHome(), 'storages', 'prompt-suggest', 'settings.json');
@@ -149,18 +157,18 @@ async function readSettings() {
 }
 
 /**
- * 偏好写入队列。
- *
- * 只串行化「写」是不够的：两个并发 POST 会各自先读到同一份旧值，再各自 merge，
- * 后落盘的那次把先落盘的那次整个覆盖掉。所以读-改-写必须整体进队列，
- * 让每次提交都基于上一次已经落盘的结果。
+ * 偏好写入队列。读-改-写必须整体进队列，否则两个并发 POST 会各自基于同一份旧值，
+ * 后落盘的那次把先落盘的覆盖掉。
  */
 let settingsChain = Promise.resolve();
 
+/** 设置补丁校验失败：区别于写盘失败，映射为 400。 */
+class SettingsValidationError extends Error {}
+
 /**
- * 在当前设置上应用一次补丁并落盘。
+ * 在当前设置上应用一次补丁并落盘。校验放在队列里做，因为它依赖当前已落盘的上限与模板。
  * 先写临时文件再 rename，避免半截 JSON 留在盘上。
- * @param {(current: object) => object} mutate 基于最新已落盘设置算出新设置
+ * @param {(current: object) => object} mutate
  * @returns {Promise<object>} 落盘后的设置
  */
 function updateSettings(mutate) {
@@ -179,9 +187,9 @@ function updateSettings(mutate) {
   return task;
 }
 
-// ── 会话上下文与生成 ──────────────────────────────────────────────────────────
+// ── 会话上下文与路由 ──────────────────────────────────────────────────────────
 
-/** 校验请求体（已解析的对象），返回 { sessionId, draft, provider?, model?, reasoningEffort? } 或错误消息。 */
+/** 校验生成请求体，返回 { sessionId, draft, provider?, model?, reasoningEffort? } 或 { error }。 */
 function parseRequest(raw) {
   const { sessionId, draft, provider, model, reasoningEffort } = raw;
   if (typeof sessionId !== 'string' || sessionId.length === 0) return { error: '缺少 sessionId' };
@@ -197,6 +205,28 @@ function parseRequest(raw) {
   return parsed;
 }
 
+/**
+ * 校验预览 / 试跑请求体。template 必须是非空字符串（编辑框内容，可未保存）。
+ *
+ * 长度口径与保存不同：已保存模板的 templateMaxChars 是保存策略，而预览/试跑读的是
+ * 尚未保存的编辑内容——用户把上限调高但还没保存时，旧上限不该把试跑卡住。
+ * 所以这里只校验占位符结构与硬上限 LIMIT_MAX_CHARS。
+ * @returns {{ value: object } | { status: number, error: string }}
+ */
+function parsePromptRequest(raw) {
+  const { mode, template, draft = '', userText = '', assistantText = '' } = raw;
+  if (mode !== 'suggest' && mode !== 'polish') return { status: 400, error: 'mode 必须是 suggest 或 polish' };
+  for (const [key, value] of Object.entries({ template, draft, userText, assistantText })) {
+    if (key !== 'template' && value !== undefined && typeof value !== 'string') {
+      return { status: 400, error: `${key} 必须是字符串` };
+    }
+  }
+  if (typeof template !== 'string') return { status: 400, error: 'template 必须是字符串' };
+  const message = validateTemplate(mode, template, LIMIT_MAX_CHARS);
+  if (message !== null) return { status: 400, error: message };
+  return { value: { mode, template, draft, userText, assistantText } };
+}
+
 /** 读取会话当前表面，提取最近一轮 user/assistant 文本。 */
 async function readConversationTail(ctx, sessionId) {
   const sessionQuery = ctx.get('sessionQuery');
@@ -208,13 +238,9 @@ async function readConversationTail(ctx, sessionId) {
 /**
  * 解析模型路由，优先级从高到低：
  * 1. 设置页里固定下来的 provider/model（用户显式选的，最权威）；
- * 2. client 传入的当前会话模型；
+ * 2. 请求里带的会话模型（生成时）；
  * 3. 全局默认模型。
- * 思考强度同理：设置页填了就盖过会话档位，留空则沿用会话的。
- *
- * @param ctx 插件上下文
- * @param parsed 请求体解析结果
- * @param settings readSettings() 的结果
+ * 思考强度：设置页填了就盖过请求带来的档位，留空则沿用请求的。
  */
 function resolveRoute(ctx, parsed, settings) {
   const pinned = settings !== null && typeof settings === 'object' && settings.provider !== '' && settings.model !== '';
@@ -237,11 +263,7 @@ function resolveRoute(ctx, parsed, settings) {
 
 /**
  * 把用户选的思考强度对齐到模型真正公布的档位。
- *
- * prepareCall 对两种情形会直接抛 UNSUPPORTED_REASONING_EFFORT：模型没有
- * reasoning 元数据却传了档位，或档位不在它公布的列表里。所以这里先问一次
- * resolveModelInfo，只在该模型确实支持时才把值传下去——否则什么都不传，
- * 让模型用自己的默认。resolveModelInfo 失败同样按"不支持"处理。
+ * prepareCall 对不支持的档位会直接抛错，所以先查一次模型元数据；不支持就不传，用模型默认。
  */
 async function resolveEffort(llm, route, signal) {
   const requested = route.reasoningEffort;
@@ -254,7 +276,10 @@ async function resolveEffort(llm, route, signal) {
   }
 }
 
-/** 一次辅助 LLM 调用；返回拼接后的全部输出文本。 */
+/**
+ * 一次辅助 LLM 调用；返回拼接后的全部输出文本（不做清洗）。
+ * 超时/取消、错误结束都抛出，绝不把半截输出当成功返回。
+ */
 async function runLlm(ctx, request) {
   const llm = ctx.get('llm');
   if (llm === undefined || typeof llm.prepareCall !== 'function') throw new Error('llm 服务不可用');
@@ -278,7 +303,6 @@ async function runLlm(ctx, request) {
         role: 'user',
         content: [{ type: 'text', text: request.prompt }],
       }],
-      system: request.system,
       signal: controller.signal,
     };
     let text = '';
@@ -288,7 +312,6 @@ async function runLlm(ctx, request) {
       if (chunk.type === 'text-delta') text += chunk.text;
       else if (chunk.type === 'finish') finish = chunk.reason;
     }
-    // 超时/取消后绝不把已累积的半截输出当成功返回
     if (controller.signal.aborted) {
       throw new Error(controller.signal.reason instanceof Error && controller.signal.reason.message
         ? controller.signal.reason.message
@@ -307,75 +330,80 @@ async function runLlm(ctx, request) {
   }
 }
 
+/** 空输出是唯一的输出校验：模型返回空白即失败，写入诊断日志。 */
+function requireNonEmpty(text) {
+  if (text.trim().length === 0) throw new Error('模型输出为空');
+  return text.trim();
+}
+
 // ── 插件主体 ──────────────────────────────────────────────────────────────────
 
 export function apply(ctx) {
   let routesRegistered = false;
 
+  /** 生成建议 / 润色：使用已保存的模板，草稿超过设置的上限则拒绝。 */
   const handleGenerate = async (req, res) => {
-    if (req.method !== 'POST') {
-      res.writeHead(405, { allow: 'POST', 'content-length': 0 });
-      res.end();
-      return;
-    }
+    if (req.method !== 'POST') { methodNotAllowed(req, res, 'POST'); return; }
     const body = await parseJsonBody(req);
-    if (body.error !== undefined) {
-      fail(res, body.status, body.error);
-      return;
-    }
+    if (body.error !== undefined) { fail(res, body.status, body.error); return; }
     const parsed = parseRequest(body.value);
-    if (parsed.error !== undefined) {
-      fail(res, 400, parsed.error);
-      return;
-    }
+    if (parsed.error !== undefined) { fail(res, 400, parsed.error); return; }
     const mode = parsed.draft.trim() === '' ? 'suggest' : 'polish';
-    if (mode === 'polish') {
-      // 超限明确拒绝，而不是截一半再改写：静默丢尾部会让用户以为润色了全文。
-      const tooLong = draftTooLong(parsed.draft);
-      if (tooLong !== null) {
-        fail(res, 413, tooLong);
-        return;
-      }
-    }
-    // 提到 try 外：失败日志要记录实际用的路由，catch 里必须还能读到它。
+    // 提到 try 外：失败日志要记录实际用的路由。
     let route;
     try {
+      const settings = await readSettings();
+      if (mode === 'polish') {
+        // 超限明确拒绝，而不是截一半再改写：静默丢尾部会让用户以为润色了全文。
+        const tooLong = draftTooLong(parsed.draft, settings.draftMaxChars);
+        if (tooLong !== null) { fail(res, 413, tooLong); return; }
+      }
       const tail = await readConversationTail(ctx, parsed.sessionId);
       if (mode === 'suggest' && tail.assistantText.trim() === '') {
         fail(res, 409, '当前会话还没有代理回复，无法生成建议');
         return;
       }
-      const prompt = buildPrompt(mode, {
+      const template = mode === 'polish' ? settings.polishPrompt : settings.suggestPrompt;
+      // 保存时已校验过一次，但 settings.json 可能被手工改坏或来自旧版本：
+      // 不兜底的话未知占位符会原样写进提示词，模型收到一段没人看得懂的素材标记。
+      // 空串走内置默认，内置默认可信，所以只查自定义模板。
+      // 长度按硬上限查而非 templateMaxChars：长度在保存时已是不变量，
+      // 这里再按当前上限查，会让「先存长模板、后调低上限」的旧数据直接生成不了。
+      if (template !== '') {
+        const invalid = validateTemplate(mode, template, LIMIT_MAX_CHARS);
+        if (invalid !== null) {
+          void recordFailure({
+            source: 'generate',
+            sessionId: parsed.sessionId,
+            mode,
+            provider: settings.provider,
+            model: settings.model,
+            reasoningEffort: settings.reasoningEffort,
+            error: `保存的提示词模板不可用：${invalid}`,
+          });
+          fail(res, 500, `保存的提示词模板不可用：${invalid}；请在设置页修正或恢复默认`);
+          return;
+        }
+      }
+      const prompt = buildPrompt(mode, template, {
         draft: parsed.draft,
         userText: tail.userText,
         assistantText: tail.assistantText,
       });
-      // 设置页固定下来的模型与思考强度优先于会话选择。
-      route = resolveRoute(ctx, parsed, await readSettings());
+      route = resolveRoute(ctx, parsed, settings);
       const raw = await runLlm(ctx, {
         mode,
         prompt,
         provider: route.provider,
         model: route.model,
-        // 两个模式都应用用户选的档位：设置里选 off 就该真的不思考，
-        // 只在 client 或 host 单边吞掉档位都会让「设为 off 却仍在思考」无声发生。
+        // 两个模式都应用用户选的档位：设置里选 off 就该真的不思考。
         reasoningEffort: route.reasoningEffort,
       });
-      // suggest：与"开发者最近一条消息"去重（case/空白归一化）；
-      // polish：把草稿原样传下去，由 polishCap 决定这条结果能有多长。
-      const text = sanitizeOutput(raw, mode, mode === 'polish' ? parsed.draft : tail.userText);
-      if (text === null) {
-        fail(res, 422, mode === 'suggest'
-          ? '模型没有给出有效的单行建议，可重试'
-          : '模型没有返回有效的润色结果，可重试');
-        return;
-      }
-      sendJson(res, 200, { ok: true, text });
+      sendJson(res, 200, { ok: true, text: requireNonEmpty(raw) });
     } catch (error) {
       const message = error && error.message ? error.message : String(error);
-      // 记实际用的路由（可能来自设置页），不是 client 报上来的那个：
-      // 失败后要能核对「到底是谁在跑、带了什么思考档位」。
       void recordFailure({
+        source: 'generate',
         sessionId: parsed.sessionId,
         mode,
         provider: route !== undefined ? route.provider : parsed.provider,
@@ -388,15 +416,99 @@ export function apply(ctx) {
     }
   };
 
-  // ── 设置路由 ────────────────────────────────────────────────────────────────
+  /** 预览：只组装提示词，不调用模型。模板取编辑框内容（可未保存）。 */
+  const handlePreview = async (req, res) => {
+    if (req.method !== 'POST') { methodNotAllowed(req, res, 'POST'); return; }
+    const body = await parseJsonBody(req);
+    if (body.error !== undefined) { fail(res, body.status, body.error); return; }
+    try {
+      const settings = await readSettings();
+      const parsed = parsePromptRequest(body.value);
+      if (parsed.error !== undefined) { fail(res, parsed.status, parsed.error); return; }
+      const { mode, template, draft, userText, assistantText } = parsed.value;
+      if (mode === 'polish') {
+        const tooLong = draftTooLong(draft, settings.draftMaxChars);
+        if (tooLong !== null) { fail(res, 413, tooLong); return; }
+      }
+      sendJson(res, 200, { ok: true, prompt: buildPrompt(mode, template, { draft, userText, assistantText }) });
+    } catch (error) {
+      fail(res, 500, error && error.message ? error.message : '组装提示词失败');
+    }
+  };
+
+  /**
+   * 试跑：用编辑框内容调用模型一次。结果只返回给设置页，不写输入框、不改会话。
+   * 路由：设置页固定模型优先，否则全局默认；思考强度沿用设置页。
+   */
+  const handleTrial = async (req, res) => {
+    if (req.method !== 'POST') { methodNotAllowed(req, res, 'POST'); return; }
+    const body = await parseJsonBody(req);
+    if (body.error !== undefined) { fail(res, body.status, body.error); return; }
+    let route;
+    let mode = 'suggest';
+    let settings;
+    /**
+     * 校验类失败（模板不合格、草稿超限）同样写诊断日志：
+     * 试跑失败后用户看到的就是这条错误，不落盘的话事后无从复核当时用的是哪版模板。
+     */
+    const rejectTrial = (status, message) => {
+      void recordFailure({
+        source: 'trial',
+        mode,
+        provider: settings !== undefined && settings.provider !== '' ? settings.provider : '',
+        model: settings !== undefined && settings.model !== '' ? settings.model : '',
+        reasoningEffort: settings !== undefined ? settings.reasoningEffort : '',
+        error: message,
+      });
+      fail(res, status, message);
+    };
+    try {
+      settings = await readSettings();
+      const parsed = parsePromptRequest(body.value);
+      if (parsed.error !== undefined) { rejectTrial(parsed.status, parsed.error); return; }
+      const { template, draft, userText, assistantText } = parsed.value;
+      mode = parsed.value.mode;
+      if (mode === 'polish') {
+        const tooLong = draftTooLong(draft, settings.draftMaxChars);
+        if (tooLong !== null) { rejectTrial(413, tooLong); return; }
+      }
+      const prompt = buildPrompt(mode, template, { draft, userText, assistantText });
+      route = resolveRoute(ctx, {}, settings);
+      const raw = await runLlm(ctx, {
+        mode,
+        prompt,
+        provider: route.provider,
+        model: route.model,
+        reasoningEffort: route.reasoningEffort,
+      });
+      sendJson(res, 200, {
+        ok: true,
+        text: requireNonEmpty(raw),
+        route: {
+          provider: route.provider,
+          model: route.model,
+          reasoningEffort: route.reasoningEffort ?? '',
+        },
+      });
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error);
+      void recordFailure({
+        source: 'trial',
+        mode,
+        provider: route !== undefined ? route.provider : '',
+        model: route !== undefined ? route.model : '',
+        reasoningEffort: route !== undefined && route.reasoningEffort !== undefined ? route.reasoningEffort : '',
+        error: message,
+      });
+      fail(res, 502, `试跑失败：${message}；详情见 ~/.dsh/storages/prompt-suggest/last-error.json`);
+    }
+  };
+
+  // ── 设置路由 ──────────────────────────────────────────────────────────────
 
   /** 列出可选模型，附带每个模型公布的思考档位，供设置页渲染两个下拉。 */
   const handleModels = async (req, res) => {
-    if (req.method !== 'GET') {
-      res.writeHead(405, { allow: 'GET', 'content-length': 0 });
-      res.end();
-      return;
-    }
+    if (req.method !== 'GET') { methodNotAllowed(req, res, 'GET'); return; }
     const llm = ctx.get('llm');
     if (llm === undefined || typeof llm.listProviders !== 'function') {
       fail(res, 503, 'llm 服务不可用');
@@ -444,28 +556,44 @@ export function apply(ctx) {
     }
   };
 
-  /** 读 / 写偏好。写只接受 normalizeSettings 认识的字段。 */
+  /**
+   * 读 / 写偏好。GET 同时返回内置默认模板、样例素材与上限范围，供设置页展示与恢复默认。
+   * POST 先校验再落盘，非法值整体拒绝，不静默回落。
+   */
   const handleSettings = async (req, res) => {
     if (req.method === 'GET') {
-      sendJson(res, 200, { ok: true, settings: await readSettings() });
+      sendJson(res, 200, {
+        ok: true,
+        settings: await readSettings(),
+        defaults: {
+          suggestPrompt: DEFAULT_TEMPLATES.suggest,
+          polishPrompt: DEFAULT_TEMPLATES.polish,
+          samples: SAMPLES,
+          limitMax: LIMIT_MAX_CHARS,
+          // 上限的默认值必须是上面前端「恢复默认」按钮读取的那两个字段名，
+          // 否则该按钮发出的补丁是空的，看起来能点、实际什么也没保存。
+          draftMaxChars: DRAFT_MAX_CHARS,
+          templateMaxChars: TEMPLATE_MAX_CHARS,
+        },
+      });
       return;
     }
-    if (req.method !== 'POST') {
-      res.writeHead(405, { allow: 'GET, POST', 'content-length': 0 });
-      res.end();
-      return;
-    }
+    if (req.method !== 'POST') { methodNotAllowed(req, res, 'GET, POST'); return; }
     const body = await parseJsonBody(req);
-    if (body.error !== undefined) {
-      fail(res, body.status, body.error);
-      return;
-    }
+    if (body.error !== undefined) { fail(res, body.status, body.error); return; }
     const patch = body.value;
     try {
-      // 读-改-写整体排队：并发保存不会各自基于旧值覆盖对方。
-      const next = await updateSettings((current) => mergeSettings(current, patch));
+      const next = await updateSettings((current) => {
+        const message = validateSettingsPatch(patch, current);
+        if (message !== null) throw new SettingsValidationError(message);
+        return mergeSettings(current, patch);
+      });
       sendJson(res, 200, { ok: true, settings: next });
     } catch (error) {
+      if (error instanceof SettingsValidationError) {
+        fail(res, 400, error.message);
+        return;
+      }
       fail(res, 500, error && error.message ? error.message : '保存设置失败');
     }
   };
@@ -475,23 +603,14 @@ export function apply(ctx) {
     if (web === undefined) return false;
     if (routesRegistered) return true;
     routesRegistered = true;
-    const disposers = [
-      web.register({
-        kind: 'exact',
-        path: '/plugins/prompt-suggest/generate',
-        handler: (req, res) => { void handleGenerate(req, res); },
-      }),
-      web.register({
-        kind: 'exact',
-        path: '/plugins/prompt-suggest/settings',
-        handler: (req, res) => { void handleSettings(req, res); },
-      }),
-      web.register({
-        kind: 'exact',
-        path: '/plugins/prompt-suggest/models',
-        handler: (req, res) => { void handleModels(req, res); },
-      }),
+    const routes = [
+      ['/plugins/prompt-suggest/generate', (req, res) => { void handleGenerate(req, res); }],
+      ['/plugins/prompt-suggest/preview', (req, res) => { void handlePreview(req, res); }],
+      ['/plugins/prompt-suggest/trial', (req, res) => { void handleTrial(req, res); }],
+      ['/plugins/prompt-suggest/settings', (req, res) => { void handleSettings(req, res); }],
+      ['/plugins/prompt-suggest/models', (req, res) => { void handleModels(req, res); }],
     ];
+    const disposers = routes.map(([path, handler]) => web.register({ kind: 'exact', path, handler }));
     ctx.effect(
       () => () => {
         for (const dispose of disposers) {
