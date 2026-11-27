@@ -52,7 +52,7 @@
   }
   .toolbar button.on { border-color: var(--brand); color: var(--brand); }
   .note { font-size: 12px; color: var(--label-secondary); margin: 14px 0 8px; }
-  .stage { position: relative; height: 420px; border: 1px dashed var(--border-l2); border-radius: 12px; overflow: hidden; }
+  .stage { position: relative; min-height: 420px; border: 1px dashed var(--border-l2); border-radius: 12px; overflow: visible; padding-bottom: 8px; }
 
   /* ══ 气泡本体（收起态）══════════════════════════════════════════════ */
   .whale-wrap { position: absolute; right: 20px; bottom: 20px; }
@@ -86,48 +86,58 @@
   @keyframes rot { to { transform: rotate(360deg); } }
 
   /* ══ 悬浮卡片（hover 态）════════════════════════════════════════════ */
+  /* 和 lib/client.js 的 .wb-* 一一对应：两行标题 / DS 余额行 / 5h·周双列配额行 */
   .card {
     position: absolute; right: 20px; bottom: 68px;
-    width: 248px; border-radius: var(--radius-card);
+    width: 244px; border-radius: var(--radius-card);
     background: var(--bg-overlay);
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--border-l1);
     box-shadow: var(--shadow);
-    padding: 12px 14px 10px;
-    font-size: 12.5px; line-height: 1.45;
+    padding: 8px 12px 7px;
+    font-size: 12px; line-height: 1.35;
     animation: pop .16s ease-out;
   }
   @keyframes pop { from { opacity: 0; transform: translateY(6px); } }
-  .card .ws { display: flex; align-items: center; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border-l1); margin-bottom: 8px; }
-  .card .ws .gear {
-    margin-left: auto; flex: none; width: 22px; height: 22px; border-radius: 6px;
+  .card .hdr { display: flex; align-items: flex-start; gap: 6px; padding-bottom: 4px; margin-bottom: 2px; border-bottom: 1px solid var(--border-l1); }
+  .card .hdr .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .card .hdr .name { font-weight: 600; font-size: 12.5px; letter-spacing: .01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .hdr .dir { display: flex; align-items: center; gap: 4px; font-size: 10px; line-height: 1.2; color: var(--label-secondary); }
+  .card .hdr .dir svg { flex: none; width: 10px; height: 10px; opacity: .7; }
+  .card .hdr .dir span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .hdr .gear {
+    flex: none; margin: -2px -5px -2px 0; width: 22px; height: 22px; border-radius: 6px;
     display: flex; align-items: center; justify-content: center;
-    color: var(--label-secondary); cursor: pointer; font-size: 13px;
+    color: var(--label-secondary); cursor: pointer; transition: background .12s, color .12s;
   }
-  .card .ws .gear:hover { background: var(--border-l1); color: var(--brand); }
-  .card .ws .name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .card .ws .dir { color: var(--label-secondary); font-size: 11px; flex: none; }
-  .row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
-  .row .prov { color: var(--label-secondary); flex: none; width: 50px; }
-  .row .val { font-variant-numeric: tabular-nums; text-align: right; flex: 1; }
-  .row .val small { color: var(--label-secondary); font-size: 11px; margin-left: 6px; }
-  .meter { height: 5px; border-radius: 3px; background: var(--border-l1); margin: 2px 0 6px; overflow: hidden; }
-  .meter i { display: block; height: 100%; border-radius: 2px; background: var(--ok); }
-  .meter i.w { background: var(--warn); }
-  .meter i.e { background: var(--err); }
-  .meters { display: flex; gap: 4px; margin: 2px 0 6px; } /* 5h | 周 左右并排 */
-  .meters .meter { flex: 1; margin: 0; }
-  .card .meta { color: var(--label-secondary); font-size: 10.5px; margin-top: 6px; display: flex; justify-content: space-between; }
-  .card .errline { color: var(--err); font-size: 11px; margin-top: 4px; }
-  .card .actions { display: flex; gap: 8px; margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--border-l1); }
-  .card .actions button {
-    flex: 1; font: inherit; font-size: 11.5px; padding: 5px 0; border-radius: 7px;
-    border: 1px solid var(--border-l2); background: transparent; color: var(--label-primary); cursor: pointer;
-  }
-  .card .actions button:hover { border-color: var(--brand); color: var(--brand); }
-  /* 预留扩展区（extraRows）：默认隐藏，功能上线时渲染 */
-  .card .extra { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-l1); color: var(--label-secondary); font-size: 11px; }
-  .card .extra .ph { display: inline-block; width: 100%; text-align: center; opacity: .55; }
+  .card .hdr .gear:hover { background: var(--border-l1); color: var(--brand); }
+  /* 余额行：数额跨后两列，与 5h/周 两块的右缘对齐 */
+  .row { display: grid; grid-template-columns: 30px 1fr 1fr; column-gap: 9px; align-items: baseline; padding: 2px 0 3px; }
+  .row .prov { font-size: 10.5px; color: var(--label-secondary); }
+  .row .val, .quota .val { grid-column: 2 / span 2; text-align: right; font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .val.mut { font-weight: 400; color: var(--label-secondary); }
+  .val.err { font-weight: 400; color: var(--err); }
+  /* 配额行：供应商标签 + 5h + 周 三列网格 */
+  .quota { display: grid; grid-template-columns: 30px minmax(0, .94fr) minmax(0, 1.06fr); column-gap: 9px; padding: 2px 0 3px; align-items: center; }
+  .quota .qname { font-size: 10.5px; line-height: 1.3; color: var(--label-secondary); align-self: center; }
+  .win { min-width: 0; }
+  .win .head { display: grid; grid-template-columns: auto 1fr; column-gap: 4px; align-items: baseline; }
+  .win .lab { font-size: 10.5px; line-height: 1.5; color: var(--label-secondary); }
+  .win .pct { text-align: right; font-size: 12px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+  .win .pct.w { color: var(--warn); }
+  .win .pct.e { color: var(--err); }
+  .win .meter { height: 3px; border-radius: 2px; background: var(--border-l1); margin: 2px 0; overflow: hidden; }
+  .win .meter i { display: block; height: 100%; border-radius: 2px; background: var(--ok); }
+  .win .meter i.w { background: var(--warn); }
+  .win .meter i.e { background: var(--err); }
+  /* 重置时间：相对剩余在前（可执行），绝对时点在后（对表用，淡一档）：5h 报时刻/明天/月-日，周报周几 */
+  .win .when { display: flex; align-items: center; gap: 3px; font-size: 10px; line-height: 1.2; color: var(--label-secondary); white-space: nowrap; overflow: hidden; }
+  .win .when svg { flex: none; width: 10px; height: 10px; opacity: .7; }
+  .win .when .rel { flex: none; font-variant-numeric: tabular-nums; }
+  .win .when .abs { min-width: 0; overflow: hidden; text-overflow: ellipsis; opacity: .62; }
+  .win .when.urgent { color: var(--err); }
+  .win .when.urgent svg { opacity: 1; }
+  .card .errline { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--border-l1); color: var(--err); font-size: 10.5px; line-height: 1.35; word-break: break-all; }
 
   /* ══ 配置弹层（内联，⚙ 触发）════════════════════════════════════════ */
   .cfg {
@@ -180,7 +190,7 @@
   <!-- ① 收起态 -->
   <div class="whale-wrap" id="v-collapsed">
     <div class="whale" title="鲸鱼小气泡">
-      <svg viewBox="0 0 27 23" fill="currentColor"><g clip-path="url(#clip0_logo)"><path d="M26.5174 3.39471C26.235 3.2567 26.1137 3.52006 25.9487 3.65346C25.8923 3.69659 25.8446 3.75294 25.7969 3.80469C25.3846 4.24516 24.9027 4.53439 24.2737 4.49989C23.3536 4.44814 22.5682 4.73737 21.8735 5.44119C21.7258 4.57349 21.2353 4.0554 20.4889 3.72304C20.0985 3.55054 19.7034 3.37746 19.4297 3.00197C19.2388 2.73459 19.1865 2.43673 19.091 2.14289C19.0301 1.96579 18.9697 1.78466 18.7656 1.75418C18.5442 1.71968 18.4574 1.90541 18.3705 2.06067C18.0232 2.69549 17.8887 3.39471 17.9019 4.10313C17.9324 5.6965 18.6051 6.96556 19.9421 7.86834C20.0939 7.97184 20.133 8.07535 20.0852 8.22658C19.9938 8.53766 19.8857 8.83955 19.7903 9.15063C19.7293 9.34901 19.6384 9.39271 19.4257 9.30588C18.692 8.9994 18.0583 8.54571 17.4982 7.99772C16.5477 7.07827 15.6881 6.06336 14.6162 5.26869C14.3644 5.08296 14.1125 4.91045 13.8521 4.746C12.7584 3.68394 13.9952 2.81164 14.2816 2.70814C14.5812 2.60003 14.3857 2.22857 13.4179 2.23317C12.4502 2.2372 11.5646 2.56151 10.4359 2.99335C10.2708 3.05832 10.0972 3.10547 9.91951 3.14457C8.8954 2.95022 7.83162 2.90709 6.72069 3.03245C4.62877 3.26533 2.95777 4.25436 1.72954 5.94261C0.254043 7.97184 -0.0932678 10.2777 0.33167 12.6824C0.778458 15.2171 2.07225 17.3153 4.06008 18.9558C6.12152 20.6567 8.49577 21.4905 11.2047 21.3306C12.8498 21.2358 14.6812 21.0155 16.7473 19.2669C17.2682 19.5262 17.8151 19.6297 18.7219 19.7074C19.4205 19.7723 20.0933 19.6729 20.6143 19.5648C21.4302 19.3923 21.3739 18.6367 21.0789 18.4981C18.6874 17.3843 19.2124 17.8374 18.7351 17.4706C19.9501 16.033 21.8063 13.4776 22.379 9.99821C22.4353 9.61409 22.5072 9.073 22.4986 8.76192C22.494 8.57216 22.5377 8.49856 22.7545 8.47671C23.3536 8.40771 23.935 8.24383 24.4692 7.94999C26.0188 7.10357 26.6439 5.71318 26.7911 4.04678C26.8129 3.79204 26.7865 3.52869 26.5174 3.39471ZM13.0143 18.3946C10.6964 16.5724 9.5722 15.9726 9.10816 15.9985C8.67402 16.0244 8.75222 16.5212 8.84768 16.8449C8.94773 17.1646 9.07768 17.3849 9.25996 17.6655C9.38589 17.8512 9.47272 18.1272 9.13404 18.3348C8.38766 18.7965 7.08985 18.1796 7.0289 18.1491C5.51833 17.2595 4.25559 16.0853 3.36546 14.4793C2.50581 12.9337 2.0067 11.2753 1.92447 9.50542C1.90262 9.07818 2.02855 8.92695 2.45406 8.84932C3.01413 8.74582 3.59144 8.72397 4.15093 8.80619C6.51656 9.15178 8.53027 10.2092 10.2185 11.8848C11.1822 12.8388 11.9114 13.979 12.6623 15.0929C13.461 16.2757 14.3201 17.4027 15.4144 18.3268C15.8008 18.6505 16.109 18.8966 16.404 19.0783C15.5144 19.1778 14.0297 19.1991 13.0143 18.3958V18.3946ZM14.1252 11.2489C14.1252 11.0591 14.277 10.9079 14.4679 10.9079C14.511 10.9079 14.5501 10.9165 14.5852 10.9292C14.6329 10.9464 14.6766 10.9723 14.7111 11.0114C14.7721 11.0718 14.8066 11.158 14.8066 11.2489C14.8066 11.4386 14.6548 11.5899 14.4639 11.5899C14.273 11.5899 14.1252 11.4386 14.1252 11.2489ZM17.5759 13.0188C17.3545 13.1096 17.1331 13.1873 16.9203 13.1959C16.5903 13.2131 16.2303 13.0791 16.0348 12.9153C15.7312 12.6605 15.5139 12.5179 15.423 12.0734C15.3839 11.8837 15.4057 11.5899 15.4402 11.4214C15.5185 11.0585 15.4316 10.8257 15.1757 10.614C14.9676 10.4415 14.7025 10.3938 14.4115 10.3938C14.3029 10.3938 14.2034 10.3461 14.1292 10.3076C14.0079 10.2472 13.9078 10.096 14.0033 9.91023C14.0338 9.84985 14.1815 9.70322 14.216 9.67734C14.6111 9.45251 15.0665 9.52612 15.488 9.6946C15.8784 9.85445 16.174 10.1477 16.5989 10.5623C17.033 11.0631 17.1112 11.2011 17.3585 11.5772C17.554 11.871 17.7317 12.1729 17.8536 12.5185C17.9272 12.7341 17.8317 12.9107 17.5759 13.0188Z" fill="currentColor"></path></g></svg>
+      <svg viewBox="0 0 27 23" fill="currentColor"><g clip-path="url(#clip0_logo)"><path d="M26.5174 3.39471C26.235 3.2567 26.1137 3.52006 25.9487 3.65346C25.8923 3.69659 25.8446 3.75294 25.7969 3.80469C25.3846 4.24516 24.9027 4.53439 24.2737 4.49989C23.3536 4.44814 22.5682 4.73737 21.8735 5.44119C21.7258 4.57349 21.2353 4.0554 20.4889 3.72304C20.0985 3.55054 19.7034 3.37746 19.4297 3.00197C19.2388 2.73459 19.1865 2.43673 19.091 2.14289C19.0301 1.96579 18.9697 1.78466 18.7656 1.75418C18.5442 1.71968 18.4574 1.90541 18.3705 2.06067C18.0232 2.69549 17.8887 3.39471 17.9019 4.10313C17.9324 5.6965 18.6051 6.96556 19.9421 7.86834C20.0939 7.97184 20.133 8.07535 20.0852 8.22658C19.9938 8.53766 19.8857 8.83955 19.7903 9.15063C19.7293 9.34901 19.6384 9.39271 19.4257 9.30588C18.692 8.9994 18.0583 8.54571 17.4982 7.99772C16.5477 7.07827 15.6881 6.06336 14.6162 5.26869C14.3644 5.08296 14.1125 4.91045 13.8521 4.746C12.7584 3.68394 13.9952 2.81164 14.2816 2.70814C14.5812 2.60003 14.3857 2.22857 13.4179 2.23317C12.4502 2.2372 11.5646 2.56151 10.4359 2.99335C10.2708 3.05832 10.0972 3.10547 9.91951 3.14457C8.8954 2.95022 7.83162 2.90709 6.72069 3.03245C4.62877 3.26533 2.95777 4.25436 1.72954 5.94261C0.254043 7.97184 -0.0932678 10.2777 0.33167 12.6824C0.778458 15.2171 2.07225 17.3153 4.06008 18.9558C6.12152 20.6567 8.49577 21.4905 11.2047 21.3306C12.8498 21.2358 14.6812 21.0155 16.7473 19.2669C17.2682 19.5262 17.8151 19.6297 18.7219 19.7074C19.4205 19.7723 20.0933 19.6729 20.6143 19.5648C21.4302 19.3923 21.3739 18.6367 21.0789 18.4981C18.6874 17.3843 19.2124 17.8374 18.7351 17.4706C19.9501 16.033 21.8063 13.4776 22.379 9.99821C22.4353 9.61409 22.5072 9.073 22.4986 8.76192C22.494 8.57216 22.5377 8.49856 22.7545 8.47671C23.3536 8.40771 23.935 8.24383 24.4692 7.94999C26.0188 7.10357 26.6439 5.71318 26.7911 4.04678C26.8129 3.79204 26.7865 3.52869 26.5174 3.39471ZM13.0143 18.3946C10.6964 16.5724 9.5722 15.9726 9.10816 15.9985C8.67402 16.0244 8.75222 16.5212 8.84768 16.8449C8.94773 17.1646 ... (line truncated to 2000 chars)
       <span class="dot"></span>
       <span class="spin"></span>
     </div>
@@ -188,21 +198,39 @@
 
   <!-- ② 悬浮卡片 -->
   <div class="card" id="v-card">
-    <div class="ws">
-      <span class="name">dsh-plugin-daix</span>
-      <span class="dir" title="D:\wsl\dsh-plugin-daix">📁 D:\wsl\…</span>
-      <span class="gear" title="配置" onclick="show('cfg')">⚙</span>
+    <div class="hdr">
+      <div class="main">
+        <span class="name">dsh-plugin-daix</span>
+        <span class="dir" title="D:\wsl\dsh-plugin-daix"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.1 3.1h4l1.3 1.7h6.4c.6 0 1.1.5 1.1 1.1v6.9c0 .6-.5 1.1-1.1 1.1H2.1c-.6 0-1.1-.5-1.1-1.1V4.2c0-.6.5-1.1 1.1-1.1Z"/></svg><span>D:\…\dsh-plugin-daix</span></span>
+      </div>
+      <span class="gear" title="配置" onclick="show('cfg')"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.9 5.97 L13.18 6.9 L14.92 6.97 L14.92 9.03 L13.18 9.1 L12.9 10.03 L12.44 10.89 L13.63 12.16 L12.16 13.63 L10.89 12.44 L10.03 12.9 L9.1 13.18 L9.03 14.92 L6.97 14.92 L6.9 13.18 L5.97 12.9 L5.11 12.44 L3.84 13.63 L2.37 12.16 L3.56 10.89 L3.1 10.03 L2.82 9.1 L1.08 9.03 L1.08 6.97 L2.82 6.9 L3.1 5.97 L3.56 5.11 L2.37 3.84 L3.84 2.37 L5.11 3.56 L5.97 3.1 L6.9 2.82 L6.97 1.08 L9.03 1.08 L9.1 2.82 L10.03 3.1 L10.89 3.56 L12.16 2.37 L13.63 3.84 L12.44 5.11 L12.9 5.97 Z M8 5.6 A2.4 2.4 0 1 0 8 10.4 A2.4 2.4 0 1 0 8 5.6 Z"/></svg></span>
     </div>
     <div class="row"><span class="prov">DS</span><span class="val">¥53.20</span></div>
-    <div class="row"><span class="prov">Z.ai</span><span class="val">5h 34.2% · 周 12.5%<small>21:00</small></span></div>
-    <div class="meters">
-      <div class="meter"><i class="w" style="width:34.2%"></i></div>
-      <div class="meter"><i style="width:12.5%"></i></div>
+    <div class="quota">
+      <span class="qname">Z.ai</span>
+              <div class="win">
+          <div class="head"><span class="lab">5h</span><span class="pct w">34.2%</span></div>
+          <div class="meter"><i class="w" style="width:34.2%"></i></div>
+          <div class="when"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.6a6.4 6.4 0 1 0 0 12.8A6.4 6.4 0 0 0 8 1.6Zm0 1.45a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9ZM7.35 4.4h1.3v3.9l2.65 1.6-.7 1.1-3.25-1.95Z"/></svg><span class="rel">1h23</span><span class="abs">19:09</span></div>
+        </div>
+              <div class="win">
+          <div class="head"><span class="lab">周</span><span class="pct">12.5%</span></div>
+          <div class="meter"><i style="width:12.5%"></i></div>
+          <div class="when"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.6a6.4 6.4 0 1 0 0 12.8A6.4 6.4 0 0 0 8 1.6Zm0 1.45a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9ZM7.35 4.4h1.3v3.9l2.65 1.6-.7 1.1-3.25-1.95Z"/></svg><span class="rel">3d9h</span><span class="abs">周一 03:22</span></div>
+        </div>
     </div>
-    <div class="row"><span class="prov">OD</span><span class="val">5h 45.0% · 周 8.3%<small>22:00</small></span></div>
-    <div class="meters">
-      <div class="meter"><i class="w" style="width:45%"></i></div>
-      <div class="meter"><i style="width:8.3%"></i></div>
+    <div class="quota">
+      <span class="qname">OD</span>
+              <div class="win">
+          <div class="head"><span class="lab">5h</span><span class="pct">45%</span></div>
+          <div class="meter"><i style="width:45%"></i></div>
+          <div class="when"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.6a6.4 6.4 0 1 0 0 12.8A6.4 6.4 0 0 0 8 1.6Zm0 1.45a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9ZM7.35 4.4h1.3v3.9l2.65 1.6-.7 1.1-3.25-1.95Z"/></svg><span class="rel">1h13</span><span class="abs">18:59</span></div>
+        </div>
+              <div class="win">
+          <div class="head"><span class="lab">周</span><span class="pct">8.3%</span></div>
+          <div class="meter"><i style="width:8.3%"></i></div>
+          <div class="when"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.6a6.4 6.4 0 1 0 0 12.8A6.4 6.4 0 0 0 8 1.6Zm0 1.45a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9ZM7.35 4.4h1.3v3.9l2.65 1.6-.7 1.1-3.25-1.95Z"/></svg><span class="rel">4d2h</span><span class="abs">周一 20:10</span></div>
+        </div>
     </div>
   </div>
 
@@ -226,48 +254,59 @@
   <!-- ④ 刷新中：气泡转圈 + 卡片数值变灰 -->
   <div class="whale-wrap" id="v-refresh" style="display:none">
     <div class="whale refreshing">
-      <svg viewBox="0 0 27 23" fill="currentColor"><g clip-path="url(#clip0_logo)"><path d="M26.5174 3.39471C26.235 3.2567 26.1137 3.52006 25.9487 3.65346C25.8923 3.69659 25.8446 3.75294 25.7969 3.80469C25.3846 4.24516 24.9027 4.53439 24.2737 4.49989C23.3536 4.44814 22.5682 4.73737 21.8735 5.44119C21.7258 4.57349 21.2353 4.0554 20.4889 3.72304C20.0985 3.55054 19.7034 3.37746 19.4297 3.00197C19.2388 2.73459 19.1865 2.43673 19.091 2.14289C19.0301 1.96579 18.9697 1.78466 18.7656 1.75418C18.5442 1.71968 18.4574 1.90541 18.3705 2.06067C18.0232 2.69549 17.8887 3.39471 17.9019 4.10313C17.9324 5.6965 18.6051 6.96556 19.9421 7.86834C20.0939 7.97184 20.133 8.07535 20.0852 8.22658C19.9938 8.53766 19.8857 8.83955 19.7903 9.15063C19.7293 9.34901 19.6384 9.39271 19.4257 9.30588C18.692 8.9994 18.0583 8.54571 17.4982 7.99772C16.5477 7.07827 15.6881 6.06336 14.6162 5.26869C14.3644 5.08296 14.1125 4.91045 13.8521 4.746C12.7584 3.68394 13.9952 2.81164 14.2816 2.70814C14.5812 2.60003 14.3857 2.22857 13.4179 2.23317C12.4502 2.2372 11.5646 2.56151 10.4359 2.99335C10.2708 3.05832 10.0972 3.10547 9.91951 3.14457C8.8954 2.95022 7.83162 2.90709 6.72069 3.03245C4.62877 3.26533 2.95777 4.25436 1.72954 5.94261C0.254043 7.97184 -0.0932678 10.2777 0.33167 12.6824C0.778458 15.2171 2.07225 17.3153 4.06008 18.9558C6.12152 20.6567 8.49577 21.4905 11.2047 21.3306C12.8498 21.2358 14.6812 21.0155 16.7473 19.2669C17.2682 19.5262 17.8151 19.6297 18.7219 19.7074C19.4205 19.7723 20.0933 19.6729 20.6143 19.5648C21.4302 19.3923 21.3739 18.6367 21.0789 18.4981C18.6874 17.3843 19.2124 17.8374 18.7351 17.4706C19.9501 16.033 21.8063 13.4776 22.379 9.99821C22.4353 9.61409 22.5072 9.073 22.4986 8.76192C22.494 8.57216 22.5377 8.49856 22.7545 8.47671C23.3536 8.40771 23.935 8.24383 24.4692 7.94999C26.0188 7.10357 26.6439 5.71318 26.7911 4.04678C26.8129 3.79204 26.7865 3.52869 26.5174 3.39471ZM13.0143 18.3946C10.6964 16.5724 9.5722 15.9726 9.10816 15.9985C8.67402 16.0244 8.75222 16.5212 8.84768 16.8449C8.94773 17.1646 9.07768 17.3849 9.25996 17.6655C9.38589 17.8512 9.47272 18.1272 9.13404 18.3348C8.38766 18.7965 7.08985 18.1796 7.0289 18.1491C5.51833 17.2595 4.25559 16.0853 3.36546 14.4793C2.50581 12.9337 2.0067 11.2753 1.92447 9.50542C1.90262 9.07818 2.02855 8.92695 2.45406 8.84932C3.01413 8.74582 3.59144 8.72397 4.15093 8.80619C6.51656 9.15178 8.53027 10.2092 10.2185 11.8848C11.1822 12.8388 11.9114 13.979 12.6623 15.0929C13.461 16.2757 14.3201 17.4027 15.4144 18.3268C15.8008 18.6505 16.109 18.8966 16.404 19.0783C15.5144 19.1778 14.0297 19.1991 13.0143 18.3958V18.3946ZM14.1252 11.2489C14.1252 11.0591 14.277 10.9079 14.4679 10.9079C14.511 10.9079 14.5501 10.9165 14.5852 10.9292C14.6329 10.9464 14.6766 10.9723 14.7111 11.0114C14.7721 11.0718 14.8066 11.158 14.8066 11.2489C14.8066 11.4386 14.6548 11.5899 14.4639 11.5899C14.273 11.5899 14.1252 11.4386 14.1252 11.2489ZM17.5759 13.0188C17.3545 13.1096 17.1331 13.1873 16.9203 13.1959C16.5903 13.2131 16.2303 13.0791 16.0348 12.9153C15.7312 12.6605 15.5139 12.5179 15.423 12.0734C15.3839 11.8837 15.4057 11.5899 15.4402 11.4214C15.5185 11.0585 15.4316 10.8257 15.1757 10.614C14.9676 10.4415 14.7025 10.3938 14.4115 10.3938C14.3029 10.3938 14.2034 10.3461 14.1292 10.3076C14.0079 10.2472 13.9078 10.096 14.0033 9.91023C14.0338 9.84985 14.1815 9.70322 14.216 9.67734C14.6111 9.45251 15.0665 9.52612 15.488 9.6946C15.8784 9.85445 16.174 10.1477 16.5989 10.5623C17.033 11.0631 17.1112 11.2011 17.3585 11.5772C17.554 11.871 17.7317 12.1729 17.8536 12.5185C17.9272 12.7341 17.8317 12.9107 17.5759 13.0188Z" fill="currentColor"></path></g></svg>
+      <svg viewBox="0 0 27 23" fill="currentColor"><g clip-path="url(#clip0_logo)"><path d="M26.5174 3.39471C26.235 3.2567 26.1137 3.52006 25.9487 3.65346C25.8923 3.69659 25.8446 3.75294 25.7969 3.80469C25.3846 4.24516 24.9027 4.53439 24.2737 4.49989C23.3536 4.44814 22.5682 4.73737 21.8735 5.44119C21.7258 4.57349 21.2353 4.0554 20.4889 3.72304C20.0985 3.55054 19.7034 3.37746 19.4297 3.00197C19.2388 2.73459 19.1865 2.43673 19.091 2.14289C19.0301 1.96579 18.9697 1.78466 18.7656 1.75418C18.5442 1.71968 18.4574 1.90541 18.3705 2.06067C18.0232 2.69549 17.8887 3.39471 17.9019 4.10313C17.9324 5.6965 18.6051 6.96556 19.9421 7.86834C20.0939 7.97184 20.133 8.07535 20.0852 8.22658C19.9938 8.53766 19.8857 8.83955 19.7903 9.15063C19.7293 9.34901 19.6384 9.39271 19.4257 9.30588C18.692 8.9994 18.0583 8.54571 17.4982 7.99772C16.5477 7.07827 15.6881 6.06336 14.6162 5.26869C14.3644 5.08296 14.1125 4.91045 13.8521 4.746C12.7584 3.68394 13.9952 2.81164 14.2816 2.70814C14.5812 2.60003 14.3857 2.22857 13.4179 2.23317C12.4502 2.2372 11.5646 2.56151 10.4359 2.99335C10.2708 3.05832 10.0972 3.10547 9.91951 3.14457C8.8954 2.95022 7.83162 2.90709 6.72069 3.03245C4.62877 3.26533 2.95777 4.25436 1.72954 5.94261C0.254043 7.97184 -0.0932678 10.2777 0.33167 12.6824C0.778458 15.2171 2.07225 17.3153 4.06008 18.9558C6.12152 20.6567 8.49577 21.4905 11.2047 21.3306C12.8498 21.2358 14.6812 21.0155 16.7473 19.2669C17.2682 19.5262 17.8151 19.6297 18.7219 19.7074C19.4205 19.7723 20.0933 19.6729 20.6143 19.5648C21.4302 19.3923 21.3739 18.6367 21.0789 18.4981C18.6874 17.3843 19.2124 17.8374 18.7351 17.4706C19.9501 16.033 21.8063 13.4776 22.379 9.99821C22.4353 9.61409 22.5072 9.073 22.4986 8.76192C22.494 8.57216 22.5377 8.49856 22.7545 8.47671C23.3536 8.40771 23.935 8.24383 24.4692 7.94999C26.0188 7.10357 26.6439 5.71318 26.7911 4.04678C26.8129 3.79204 26.7865 3.52869 26.5174 3.39471ZM13.0143 18.3946C10.6964 16.5724 9.5722 15.9726 9.10816 15.9985C8.67402 16.0244 8.75222 16.5212 8.84768 16.8449C8.94773 17.1646 ... (line truncated to 2000 chars)
       <span class="spin"></span>
     </div>
   </div>
-  <div class="card" id="v-refresh-card" style="display:none; opacity:.65">
-    <div class="ws"><span class="name">dsh-plugin-daix</span><span class="dir">📁 D:\wsl\…</span></div>
-    <div class="row"><span class="prov">DS</span><span class="val">刷新中…</span></div>
-    <div class="row"><span class="prov">Z.ai</span><span class="val">刷新中…</span></div>
-    <div class="row"><span class="prov">OD</span><span class="val">刷新中…</span></div>
+  <div class="card" id="v-refresh-card" style="display:none; opacity:.6">
+    <div class="hdr">
+      <div class="main">
+        <span class="name">dsh-plugin-daix</span>
+        <span class="dir"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.1 3.1h4l1.3 1.7h6.4c.6 0 1.1.5 1.1 1.1v6.9c0 .6-.5 1.1-1.1 1.1H2.1c-.6 0-1.1-.5-1.1-1.1V4.2c0-.6.5-1.1 1.1-1.1Z"/></svg><span>D:\…\dsh-plugin-daix</span></span>
+      </div>
+      <span class="gear" title="配置"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.9 5.97 L13.18 6.9 L14.92 6.97 L14.92 9.03 L13.18 9.1 L12.9 10.03 L12.44 10.89 L13.63 12.16 L12.16 13.63 L10.89 12.44 L10.03 12.9 L9.1 13.18 L9.03 14.92 L6.97 14.92 L6.9 13.18 L5.97 12.9 L5.11 12.44 L3.84 13.63 L2.37 12.16 L3.56 10.89 L3.1 10.03 L2.82 9.1 L1.08 9.03 L1.08 6.97 L2.82 6.9 L3.1 5.97 L3.56 5.11 L2.37 3.84 L3.84 2.37 L5.11 3.56 L5.97 3.1 L6.9 2.82 L6.97 1.08 L9.03 1.08 L9.1 2.82 L10.03 3.1 L10.89 3.56 L12.16 2.37 L13.63 3.84 L12.44 5.11 L12.9 5.97 Z M8 5.6 A2.4 2.4 0 1 0 8 10.4 A2.4 2.4 0 1 0 8 5.6 Z"/></svg></span>
+    </div>
+    <div class="row"><span class="prov">DS</span><span class="val mut">刷新中…</span></div>
+    <div class="row"><span class="prov">Z.ai</span><span class="val mut">刷新中…</span></div>
+    <div class="row"><span class="prov">OD</span><span class="val mut">刷新中…</span></div>
   </div>
 
   <!-- ⑤ 错误态：红点 + 卡片内错误行 -->
   <div class="whale-wrap" id="v-error" style="display:none">
     <div class="whale err">
-      <svg viewBox="0 0 27 23" fill="currentColor"><g clip-path="url(#clip0_logo)"><path d="M26.5174 3.39471C26.235 3.2567 26.1137 3.52006 25.9487 3.65346C25.8923 3.69659 25.8446 3.75294 25.7969 3.80469C25.3846 4.24516 24.9027 4.53439 24.2737 4.49989C23.3536 4.44814 22.5682 4.73737 21.8735 5.44119C21.7258 4.57349 21.2353 4.0554 20.4889 3.72304C20.0985 3.55054 19.7034 3.37746 19.4297 3.00197C19.2388 2.73459 19.1865 2.43673 19.091 2.14289C19.0301 1.96579 18.9697 1.78466 18.7656 1.75418C18.5442 1.71968 18.4574 1.90541 18.3705 2.06067C18.0232 2.69549 17.8887 3.39471 17.9019 4.10313C17.9324 5.6965 18.6051 6.96556 19.9421 7.86834C20.0939 7.97184 20.133 8.07535 20.0852 8.22658C19.9938 8.53766 19.8857 8.83955 19.7903 9.15063C19.7293 9.34901 19.6384 9.39271 19.4257 9.30588C18.692 8.9994 18.0583 8.54571 17.4982 7.99772C16.5477 7.07827 15.6881 6.06336 14.6162 5.26869C14.3644 5.08296 14.1125 4.91045 13.8521 4.746C12.7584 3.68394 13.9952 2.81164 14.2816 2.70814C14.5812 2.60003 14.3857 2.22857 13.4179 2.23317C12.4502 2.2372 11.5646 2.56151 10.4359 2.99335C10.2708 3.05832 10.0972 3.10547 9.91951 3.14457C8.8954 2.95022 7.83162 2.90709 6.72069 3.03245C4.62877 3.26533 2.95777 4.25436 1.72954 5.94261C0.254043 7.97184 -0.0932678 10.2777 0.33167 12.6824C0.778458 15.2171 2.07225 17.3153 4.06008 18.9558C6.12152 20.6567 8.49577 21.4905 11.2047 21.3306C12.8498 21.2358 14.6812 21.0155 16.7473 19.2669C17.2682 19.5262 17.8151 19.6297 18.7219 19.7074C19.4205 19.7723 20.0933 19.6729 20.6143 19.5648C21.4302 19.3923 21.3739 18.6367 21.0789 18.4981C18.6874 17.3843 19.2124 17.8374 18.7351 17.4706C19.9501 16.033 21.8063 13.4776 22.379 9.99821C22.4353 9.61409 22.5072 9.073 22.4986 8.76192C22.494 8.57216 22.5377 8.49856 22.7545 8.47671C23.3536 8.40771 23.935 8.24383 24.4692 7.94999C26.0188 7.10357 26.6439 5.71318 26.7911 4.04678C26.8129 3.79204 26.7865 3.52869 26.5174 3.39471ZM13.0143 18.3946C10.6964 16.5724 9.5722 15.9726 9.10816 15.9985C8.67402 16.0244 8.75222 16.5212 8.84768 16.8449C8.94773 17.1646 9.07768 17.3849 9.25996 17.6655C9.38589 17.8512 9.47272 18.1272 9.13404 18.3348C8.38766 18.7965 7.08985 18.1796 7.0289 18.1491C5.51833 17.2595 4.25559 16.0853 3.36546 14.4793C2.50581 12.9337 2.0067 11.2753 1.92447 9.50542C1.90262 9.07818 2.02855 8.92695 2.45406 8.84932C3.01413 8.74582 3.59144 8.72397 4.15093 8.80619C6.51656 9.15178 8.53027 10.2092 10.2185 11.8848C11.1822 12.8388 11.9114 13.979 12.6623 15.0929C13.461 16.2757 14.3201 17.4027 15.4144 18.3268C15.8008 18.6505 16.109 18.8966 16.404 19.0783C15.5144 19.1778 14.0297 19.1991 13.0143 18.3958V18.3946ZM14.1252 11.2489C14.1252 11.0591 14.277 10.9079 14.4679 10.9079C14.511 10.9079 14.5501 10.9165 14.5852 10.9292C14.6329 10.9464 14.6766 10.9723 14.7111 11.0114C14.7721 11.0718 14.8066 11.158 14.8066 11.2489C14.8066 11.4386 14.6548 11.5899 14.4639 11.5899C14.273 11.5899 14.1252 11.4386 14.1252 11.2489ZM17.5759 13.0188C17.3545 13.1096 17.1331 13.1873 16.9203 13.1959C16.5903 13.2131 16.2303 13.0791 16.0348 12.9153C15.7312 12.6605 15.5139 12.5179 15.423 12.0734C15.3839 11.8837 15.4057 11.5899 15.4402 11.4214C15.5185 11.0585 15.4316 10.8257 15.1757 10.614C14.9676 10.4415 14.7025 10.3938 14.4115 10.3938C14.3029 10.3938 14.2034 10.3461 14.1292 10.3076C14.0079 10.2472 13.9078 10.096 14.0033 9.91023C14.0338 9.84985 14.1815 9.70322 14.216 9.67734C14.6111 9.45251 15.0665 9.52612 15.488 9.6946C15.8784 9.85445 16.174 10.1477 16.5989 10.5623C17.033 11.0631 17.1112 11.2011 17.3585 11.5772C17.554 11.871 17.7317 12.1729 17.8536 12.5185C17.9272 12.7341 17.8317 12.9107 17.5759 13.0188Z" fill="currentColor"></path></g></svg>
+      <svg viewBox="0 0 27 23" fill="currentColor"><g clip-path="url(#clip0_logo)"><path d="M26.5174 3.39471C26.235 3.2567 26.1137 3.52006 25.9487 3.65346C25.8923 3.69659 25.8446 3.75294 25.7969 3.80469C25.3846 4.24516 24.9027 4.53439 24.2737 4.49989C23.3536 4.44814 22.5682 4.73737 21.8735 5.44119C21.7258 4.57349 21.2353 4.0554 20.4889 3.72304C20.0985 3.55054 19.7034 3.37746 19.4297 3.00197C19.2388 2.73459 19.1865 2.43673 19.091 2.14289C19.0301 1.96579 18.9697 1.78466 18.7656 1.75418C18.5442 1.71968 18.4574 1.90541 18.3705 2.06067C18.0232 2.69549 17.8887 3.39471 17.9019 4.10313C17.9324 5.6965 18.6051 6.96556 19.9421 7.86834C20.0939 7.97184 20.133 8.07535 20.0852 8.22658C19.9938 8.53766 19.8857 8.83955 19.7903 9.15063C19.7293 9.34901 19.6384 9.39271 19.4257 9.30588C18.692 8.9994 18.0583 8.54571 17.4982 7.99772C16.5477 7.07827 15.6881 6.06336 14.6162 5.26869C14.3644 5.08296 14.1125 4.91045 13.8521 4.746C12.7584 3.68394 13.9952 2.81164 14.2816 2.70814C14.5812 2.60003 14.3857 2.22857 13.4179 2.23317C12.4502 2.2372 11.5646 2.56151 10.4359 2.99335C10.2708 3.05832 10.0972 3.10547 9.91951 3.14457C8.8954 2.95022 7.83162 2.90709 6.72069 3.03245C4.62877 3.26533 2.95777 4.25436 1.72954 5.94261C0.254043 7.97184 -0.0932678 10.2777 0.33167 12.6824C0.778458 15.2171 2.07225 17.3153 4.06008 18.9558C6.12152 20.6567 8.49577 21.4905 11.2047 21.3306C12.8498 21.2358 14.6812 21.0155 16.7473 19.2669C17.2682 19.5262 17.8151 19.6297 18.7219 19.7074C19.4205 19.7723 20.0933 19.6729 20.6143 19.5648C21.4302 19.3923 21.3739 18.6367 21.0789 18.4981C18.6874 17.3843 19.2124 17.8374 18.7351 17.4706C19.9501 16.033 21.8063 13.4776 22.379 9.99821C22.4353 9.61409 22.5072 9.073 22.4986 8.76192C22.494 8.57216 22.5377 8.49856 22.7545 8.47671C23.3536 8.40771 23.935 8.24383 24.4692 7.94999C26.0188 7.10357 26.6439 5.71318 26.7911 4.04678C26.8129 3.79204 26.7865 3.52869 26.5174 3.39471ZM13.0143 18.3946C10.6964 16.5724 9.5722 15.9726 9.10816 15.9985C8.67402 16.0244 8.75222 16.5212 8.84768 16.8449C8.94773 17.1646 ... (line truncated to 2000 chars)
       <span class="dot"></span>
     </div>
   </div>
   <div class="card" id="v-error-card" style="display:none">
-    <div class="ws">
-      <span class="name">dsh-plugin-daix</span>
-      <span class="dir">📁 D:\wsl\…</span>
-      <span class="gear" title="配置" onclick="show('cfg')">⚙</span>
+    <div class="hdr">
+      <div class="main">
+        <span class="name">dsh-plugin-daix</span>
+        <span class="dir"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.1 3.1h4l1.3 1.7h6.4c.6 0 1.1.5 1.1 1.1v6.9c0 .6-.5 1.1-1.1 1.1H2.1c-.6 0-1.1-.5-1.1-1.1V4.2c0-.6.5-1.1 1.1-1.1Z"/></svg><span>D:\…\dsh-plugin-daix</span></span>
+      </div>
+      <span class="gear" title="配置" onclick="show('cfg')"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.9 5.97 L13.18 6.9 L14.92 6.97 L14.92 9.03 L13.18 9.1 L12.9 10.03 L12.44 10.89 L13.63 12.16 L12.16 13.63 L10.89 12.44 L10.03 12.9 L9.1 13.18 L9.03 14.92 L6.97 14.92 L6.9 13.18 L5.97 12.9 L5.11 12.44 L3.84 13.63 L2.37 12.16 L3.56 10.89 L3.1 10.03 L2.82 9.1 L1.08 9.03 L1.08 6.97 L2.82 6.9 L3.1 5.97 L3.56 5.11 L2.37 3.84 L3.84 2.37 L5.11 3.56 L5.97 3.1 L6.9 2.82 L6.97 1.08 L9.03 1.08 L9.1 2.82 L10.03 3.1 L10.89 3.56 L12.16 2.37 L13.63 3.84 L12.44 5.11 L12.9 5.97 Z M8 5.6 A2.4 2.4 0 1 0 8 10.4 A2.4 2.4 0 1 0 8 5.6 Z"/></svg></span>
     </div>
-    <div class="row"><span class="prov">DS</span><span class="val" style="color:var(--err)">失败</span></div>
-    <div class="row"><span class="prov">Z.ai</span><span class="val">5h 34.2% · 周 12.5%<small>21:00</small></span></div>
-    <div class="meters">
-      <div class="meter"><i class="w" style="width:34.2%"></i></div>
-      <div class="meter"><i style="width:12.5%"></i></div>
+    <div class="row"><span class="prov">DS</span><span class="val err">失败</span></div>
+    <div class="quota">
+      <span class="qname">Z.ai</span>
+      <div class="win">
+        <div class="head"><span class="lab">5h</span><span class="pct w">34.2%</span></div>
+        <div class="meter"><i class="w" style="width:34.2%"></i></div>
+        <div class="when"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.6a6.4 6.4 0 1 0 0 12.8A6.4 6.4 0 0 0 8 1.6Zm0 1.45a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9ZM7.35 4.4h1.3v3.9l2.65 1.6-.7 1.1-3.25-1.95Z"/></svg><span class="rel">1h23</span><span class="abs">19:09</span></div>
+      </div>
+      <div class="win">
+        <div class="head"><span class="lab">周</span><span class="pct">12.5%</span></div>
+        <div class="meter"><i style="width:12.5%"></i></div>
+        <div class="when"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.6a6.4 6.4 0 1 0 0 12.8A6.4 6.4 0 0 0 8 1.6Zm0 1.45a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9ZM7.35 4.4h1.3v3.9l2.65 1.6-.7 1.1-3.25-1.95Z"/></svg><span class="rel">3d9h</span><span class="abs">周一 03:22</span></div>
+      </div>
     </div>
-    <div class="row"><span class="prov">OD</span><span class="val">5h 45.0% · 周 8.3%<small>22:00</small></span></div>
-    <div class="meters">
-      <div class="meter"><i class="w" style="width:45%"></i></div>
-      <div class="meter"><i style="width:8.3%"></i></div>
-    </div>
+    <div class="row"><span class="prov">OD</span><span class="val mut">未配置</span></div>
     <div class="errline">DS：凭据无效或已过期（HTTP 401）</div>
-    <div class="meta"><span>点击鲸鱼图标可重试</span></div>
   </div>
 </div>
 
 <div class="note" style="margin-top:22px">
-  <b>已定决策</b>：独立插件（复制裁剪 fee-panel 取数）｜shell.overlay 整页右下角悬浮｜DeepSeek logo 鲸鱼图标（点击=强制刷新）｜<b>卡片行序：DS 余额置顶第一行</b>，其后 Z.ai、OD 各一行，<b>5h/周用量合并同行</b>（5h 主 meter + 周淡 meter，重置时间取 5h）｜Z.ai 新增周用量（2026-11-20 实测：TOKENS_LIMIT unit 6=周档，原先只取 5h）｜OD 周用量（7d，数据面早已返回、UI 此前未展示）｜不显示 OD 钱包余额｜卡片右上角 ⚙ 打开内联配置弹层（三 Key + 显示开关 + 保存即验证）｜无刷新按钮/更新时间/扩展区 UI（数据面预留）｜错误红点角标、无 key 降饱和。
+  <b>已定决策</b>：独立插件（复制裁剪 fee-panel 取数）｜shell.overlay 整页右下角悬浮｜DeepSeek logo 鲸鱼图标（点击=强制刷新）｜<b>卡片行序：DS 余额置顶第一行</b>，其后 Z.ai、OD 各一行｜<b>每行 5h / 周 双列并排</b>，各列自带百分比、3px 进度条与重置倒计时（相对剩余 + 绝对时点；5h 报时刻、周报"周几 时:分"（剩余满 7 天才回落月-日）；剩余 &lt;30 分钟转红；缺 resetsAt 只显一个 —）｜Z.ai 新增周用量（2026-11-20 实测：TOKENS_LIMIT unit 6=周档）｜OD 周用量（7d）｜不显示 OD 钱包余额｜卡片右上角 ⚙ 打开内联配置弹层（三 Key + 显示开关 + 保存即验证）｜无刷新按钮/更新时间/扩展区 UI（数据面预留）｜错误红点角标、无 key 降饱和。<br><b>本次改版</b>：标题拆两行（工作区名不截断、目录次行小字），余额行与配额行共用 30px 左标签列 + 周列略宽的两列网格（容「周一 03:22」），DS 数额右缘与 5h/周 两块右缘对齐；百分比随用量着色（≥70% 橙、≥90% 红），重置时间用小号灰字从属于数据本身。
 </div>
 
 <script>

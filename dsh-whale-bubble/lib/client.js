@@ -13,8 +13,9 @@
 // /set-session 通知 host 重算工作区，并经模块级监听器即时更新气泡卡片。
 // UI（挂 shell.overlay，整页右下角 fixed）：
 //   - 收起态：38px 圆形半透明鲸鱼图标（hover 实体化）；点击图标 = 强制刷新（转圈）
-//   - hover 卡片：工作区名/目录 + DS 余额置顶 + Z.ai/OD 各一行（5h/周用量合并文字，
-//     下方双进度条左右并排：左 5h、右 周）；
+//   - hover 卡片：两行标题（工作区名 / 目录）+ DS 余额行 + Z.ai/OD 各一行；
+//     每个套餐行内 5h 与 周 两列并排：窗口名 + 百分比 → 3px 进度条 → 重置倒计时
+//     （先给"还剩多久"，再给绝对时点；5h 报时刻、周报"周几 时:分"；<30 分钟转红）；
 //     卡片右上 ⚙ 打开内联配置弹层；错误红点角标、no-key 降饱和
 //   - 配置弹层：三 Key 输入 + 显示开关，✕ 关闭
 //   - 无刷新按钮/更新时间/扩展区 UI（数据面预留 extraRows）
@@ -43,25 +44,62 @@ window.__ModuleLoader__.load({
 .wb-whale .wb-spin{position:absolute;inset:-1px;corner-shape:round;border-radius:50%;border:2px solid rgba(74,125,255,.22);border-top-color:var(--dsw-alias-brand-primary,#4a7dff);animation:wb-rot .8s linear infinite;display:none;pointer-events:none}
 .wb-whale.wb-refreshing .wb-spin{display:block}
 @keyframes wb-rot{to{transform:rotate(360deg)}}
-.wb-card{position:fixed;right:20px;bottom:58px;width:218px;border-radius:10px;background:var(--dsw-alias-bg-overlay,rgba(255,255,255,.92));backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));box-shadow:0 8px 28px rgba(0,0,0,.14);padding:9px 11px 7px;font-size:11.5px;line-height:1.4;animation:wb-pop .16s ease-out;color:var(--dsw-alias-label-primary,#1a1a1a)}
+/* 卡片几何：宽 244（含 12px 内边距），左标签列 30px + 5h/周 两列按内容权重分配（周列略宽，容「周一 03:22」）*/
+.wb-card{position:fixed;right:20px;bottom:58px;width:244px;padding:8px 12px 7px;border-radius:12px;
+  background:var(--dsw-alias-bg-overlay,rgba(255,255,255,.94));
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));box-shadow:0 8px 28px rgba(0,0,0,.14);
+  font-size:12px;line-height:1.35;color:var(--dsw-alias-label-primary,#1a1a1a);animation:wb-pop .16s ease-out}
 @keyframes wb-pop{from{opacity:0;transform:translateY(6px)}}
-.wb-ws{display:flex;align-items:center;gap:5px;padding-bottom:6px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));margin-bottom:5px}
-.wb-gear{margin-left:auto;flex:none;width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-secondary,#8a8a85);cursor:pointer;font-size:13px;border:none;background:transparent;padding:0}
+/* 标题两行：工作区名独占一行（不截断），目录小字在下一行，⚙ 固定在右上 */
+.wb-hdr{display:flex;align-items:flex-start;gap:6px;padding-bottom:4px;margin-bottom:2px;
+  border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}
+.wb-hdrmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.wb-wsname{min-width:0;font-size:12.5px;font-weight:600;letter-spacing:.01em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wb-wsdir{min-width:0;display:flex;align-items:center;gap:4px;font-size:10px;line-height:1.2;
+  color:var(--dsw-alias-label-secondary,#8a8a85)}
+.wb-wsdir svg{flex:none;width:10px;height:10px;opacity:.7}
+.wb-wsdir span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wb-gear{flex:none;margin:-2px -5px -2px 0;width:22px;height:22px;border-radius:6px;display:flex;
+  align-items:center;justify-content:center;color:var(--dsw-alias-label-secondary,#8a8a85);
+  cursor:pointer;border:none;background:transparent;padding:0;transition:background .12s,color .12s}
 .wb-gear:hover{background:var(--dsw-alias-border-l1,rgba(0,0,0,.08));color:var(--dsw-alias-brand-primary,#4a7dff)}
-.wb-wsname{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wb-wsdir{color:var(--dsw-alias-label-secondary,#8a8a85);font-size:11px;flex:none}
-.wb-row{display:flex;justify-content:space-between;align-items:center;padding:2px 0}
-.wb-prov{color:var(--dsw-alias-label-secondary,#8a8a85);flex:none;width:50px}
-.wb-val{font-variant-numeric:tabular-nums;text-align:right;flex:1}
-.wb-val small{color:var(--dsw-alias-label-secondary,#8a8a85);font-size:10px;margin-left:5px}
-.wb-meter{height:5px;border-radius:3px;background:var(--dsw-alias-border-l1,rgba(0,0,0,.08));margin:2px 0 4px;overflow:hidden}
-.wb-meters{display:flex;gap:4px;margin:2px 0 4px}
-.wb-meters .wb-meter{flex:1;margin:0}
-.wb-meter i{display:block;height:100%;border-radius:2px;background:var(--dsw-alias-state-success,#2fa36b)}
+.wb-gear:focus-visible{outline:1.5px solid var(--dsw-alias-brand-primary,#4a7dff);outline-offset:1px}
+.wb-gear svg{width:13px;height:13px}
+
+/* 三列网格：供应商标签 | 5h | 周。余额行跨后两列，数额与两块右缘对齐 */
+.wb-row{display:grid;grid-template-columns:30px 1fr 1fr;column-gap:9px;align-items:baseline;padding:2px 0 3px}
+.wb-prov{font-size:10.5px;color:var(--dsw-alias-label-secondary,#8a8a85)}
+.wb-val{grid-column:2 / span 2;text-align:right;font-size:11.5px;font-weight:600;
+  font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wb-val.mut,.wb-val.err{font-weight:400}
+.wb-val.mut{color:var(--dsw-alias-label-secondary,#8a8a85)}
+.wb-val.err{color:var(--dsw-alias-state-error,#d9483b)}
+
+.wb-quota{display:grid;grid-template-columns:30px minmax(0,.94fr) minmax(0,1.06fr);column-gap:9px;padding:2px 0 3px;align-items:center}
+.wb-qname{font-size:10.5px;line-height:1.3;color:var(--dsw-alias-label-secondary,#8a8a85);align-self:center}
+.wb-single{grid-template-columns:30px 1fr}
+.wb-win{min-width:0}
+.wb-winhead{display:grid;grid-template-columns:auto 1fr;column-gap:4px;align-items:baseline}
+.wb-winlab{font-size:10.5px;line-height:1.5;color:var(--dsw-alias-label-secondary,#8a8a85)}
+.wb-winpct{text-align:right;font-size:12px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.wb-winpct.w{color:var(--dsw-alias-state-warning,#d98a1f)}
+.wb-winpct.e{color:var(--dsw-alias-state-error,#d9483b)}
+.wb-meter{height:3px;border-radius:2px;background:var(--dsw-alias-border-l1,rgba(0,0,0,.09));
+  margin:2px 0;overflow:hidden}
+.wb-meter i{display:block;height:100%;border-radius:2px;background:var(--dsw-alias-state-success,#2fa36b);transition:width .25s ease}
 .wb-meter i.w{background:var(--dsw-alias-state-warning,#d98a1f)}
 .wb-meter i.e{background:var(--dsw-alias-state-error,#d9483b)}
-.wb-errline{color:var(--dsw-alias-state-error,#d9483b);font-size:11px;margin-top:4px;word-break:break-all}
-.wb-na{color:var(--dsw-alias-label-secondary,#8a8a85);font-size:11px;padding:3px 0}
+.wb-when{display:flex;align-items:center;gap:3px;font-size:10px;line-height:1.2;
+  color:var(--dsw-alias-label-secondary,#8a8a85);white-space:nowrap;overflow:hidden}
+.wb-when svg{flex:none;width:10px;height:10px;opacity:.7}
+.wb-rel{flex:none;font-variant-numeric:tabular-nums}
+.wb-abs{min-width:0;overflow:hidden;text-overflow:ellipsis;opacity:.62}
+.wb-when.urgent{color:var(--dsw-alias-state-error,#d9483b)}
+.wb-when.urgent svg{opacity:1}
+.wb-errline{margin-top:4px;padding-top:6px;border-top:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));
+  color:var(--dsw-alias-state-error,#d9483b);font-size:10.5px;line-height:1.35;word-break:break-all}
 .wb-cfg{position:fixed;right:20px;bottom:68px;width:268px;border-radius:12px;background:var(--dsw-alias-bg-overlay,rgba(255,255,255,.92));backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));box-shadow:0 8px 28px rgba(0,0,0,.14);padding:14px;font-size:12.5px;animation:wb-pop .16s ease-out;color:var(--dsw-alias-label-primary,#1a1a1a)}
 .wb-cfg h3{font-size:13px;margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;font-weight:600}
 .wb-cfg .wb-x{cursor:pointer;color:var(--dsw-alias-label-secondary,#8a8a85);font-size:15px;line-height:1;border:none;background:transparent;padding:0}
@@ -124,12 +162,46 @@ window.__ModuleLoader__.load({
     // ── 工具 ────────────────────────────────────────────────────────────────
     function p2(n) { return String(n).padStart(2, "0"); }
 
-    function fmtTime(iso) {
+    // 一天的 0 点时间戳（判断时点落在哪一天）
+    function startOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+
+    // 相对剩余时长（紧凑写法）："9m" / "1h23" / "3d9h"；返回值已保证非负
+    function relText(minutes) {
+      var m = Math.max(0, Math.round(minutes));
+      if (m < 60) return (m < 1 ? "<1" : String(m)) + "m";
+      var h = Math.floor(m / 60);
+      var mm = m % 60;
+      if (h < 24) return h + "h" + (mm > 0 ? p2(mm) : "");
+      var d = Math.floor(h / 24);
+      var hh = h % 24;
+      return d + "d" + (hh > 0 ? hh + "h" : "");
+    }
+
+    function clockText(d) { return p2(d.getHours()) + ":" + p2(d.getMinutes()); }
+
+    var WEEK_CN = ["日", "一", "二", "三", "四", "五", "六"];
+
+    var WEEK_MIN = 7 * 24 * 60;
+
+    // 终态时间文本：相对 + 绝对（同一天只报时刻，跨天加"明天/周X/月-日"）
+    // 5h 窗口看"几点归零"；周窗口跨度大，按"周几 时:分"更省心
+    function resetText(iso, weekly) {
       var d = new Date(iso);
-      if (isNaN(d.getTime())) return "";
+      if (isNaN(d.getTime())) return null;
       var now = new Date();
-      if (d.toDateString() === now.toDateString()) return p2(d.getHours()) + ":" + p2(d.getMinutes());
-      return p2(d.getMonth() + 1) + "-" + p2(d.getDate()) + " " + p2(d.getHours()) + ":" + p2(d.getMinutes());
+      var minutes = (d.getTime() - now.getTime()) / 60000;
+      var daysAhead = Math.round((startOfDay(d) - startOfDay(now)) / 86400000);
+      var tag;
+      // 周窗按"周几"读；剩余满一整周后周几会重名，改用月-日
+      // （按真实剩余判，不按日历日差：剩 6d23h 跨了 7 个自然日仍是"周几"）
+      if (weekly) tag = minutes >= WEEK_MIN ? p2(d.getMonth() + 1) + "-" + p2(d.getDate()) : "周" + WEEK_CN[d.getDay()];
+      else if (daysAhead === 0) tag = "";
+      else if (daysAhead === 1) tag = "明天";
+      else tag = p2(d.getMonth() + 1) + "-" + p2(d.getDate());
+      var abs = (tag ? tag + " " : "") + clockText(d);
+      // 已到重置点（或数据比实际晚一拍）：明确写"已重置"，别显示成"<1m"让人以为还能用
+      var rel = minutes <= 0 ? "已重置" : relText(minutes);
+      return { rel: rel, abs: abs, urgent: minutes < 30 };
     }
 
     function barClass(pct) {
@@ -175,31 +247,56 @@ window.__ModuleLoader__.load({
       return w.label === "7d" ? "周" : (w.label || "");
     }
 
-    // 套餐窗口行：文字行合并 5h/周（"5h 34.2% · 周 12.5%" + 5h 重置时间），
-    // 下方双进度条左右并排（左 5h、右 周，各占一半宽）
+    // 小图标（内联 SVG，颜色跟随 currentColor）
+    function Icon(props) {
+      return React.createElement("svg", { viewBox: "0 0 16 16", fill: "currentColor", "aria-hidden": true },
+        React.createElement("path", { d: props.d }));
+    }
+    var ICON_CLOCK = "M8 1.6a6.4 6.4 0 1 0 0 12.8A6.4 6.4 0 0 0 8 1.6Zm0 1.45a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9ZM7.35 4.4h1.3v3.9l2.65 1.6-.7 1.1-3.25-1.95Z";
+    var ICON_FOLDER = "M2.1 3.1h4l1.3 1.7h6.4c.6 0 1.1.5 1.1 1.1v6.9c0 .6-.5 1.1-1.1 1.1H2.1c-.6 0-1.1-.5-1.1-1.1V4.2c0-.6.5-1.1 1.1-1.1Z";
+    var ICON_GEAR = "M12.9 5.97 L13.18 6.9 L14.92 6.97 L14.92 9.03 L13.18 9.1 L12.9 10.03 L12.44 10.89 L13.63 12.16 L12.16 13.63 L10.89 12.44 L10.03 12.9 L9.1 13.18 L9.03 14.92 L6.97 14.92 L6.9 13.18 L5.97 12.9 L5.11 12.44 L3.84 13.63 L2.37 12.16 L3.56 10.89 L3.1 10.03 L2.82 9.1 L1.08 9.03 L1.08 6.97 L2.82 6.9 L3.1 5.97 L3.56 5.11 L2.37 3.84 L3.84 2.37 L5.11 3.56 L5.97 3.1 L6.9 2.82 L6.97 1.08 L9.03 1.08 L9.1 2.82 L10.03 3.1 L10.89 3.56 L12.16 2.37 L13.63 3.84 L12.44 5.11 L12.9 5.97 Z M8 5.6 A2.4 2.4 0 1 0 8 10.4 A2.4 2.4 0 1 0 8 5.6 Z";
+
+    // 单个窗口块：窗口名 + 百分比（一行）→ 进度条 → 重置倒计时
+    // 倒计时在前（"还剩多久"是可执行的判断），绝对时点在后、淡一档做对表用
+    function WindowCell(props) {
+      var w = props.w;
+      var pct = w.percent;
+      var t = props.text;
+      var head = React.createElement("div", { className: "wb-winhead" },
+        React.createElement("span", { className: "wb-winlab" }, winLabel(w)),
+        React.createElement("span", { className: "wb-winpct" + barClass(pct) }, pct + "%"));
+      var meter = React.createElement("div", { className: "wb-meter" },
+        React.createElement("i", { className: barClass(pct), style: { width: Math.max(2, pct) + "%" } }));
+      // 接口没给重置时间时整行只留一个"—"：时钟图标与相对段都不占位，避免读出"还有 0 分钟"
+      var when = React.createElement("div", {
+        className: "wb-when" + (t && t.urgent ? " urgent" : ""),
+        title: t ? "重置 " + t.abs : "重置时间未返回",
+      },
+        t ? React.createElement(Icon, { d: ICON_CLOCK }) : null,
+        t ? React.createElement("span", { className: "wb-rel" }, t.rel) : null,
+        t
+          ? React.createElement("span", { className: "wb-abs" }, t.abs)
+          : React.createElement("span", { className: "wb-abs" }, "—"));
+      return React.createElement("div", { className: "wb-win" }, head, meter, when);
+    }
+    // 5h 窗看"几点归零"，周窗跨度大按"周几 时:分"；两种都先给相对剩余，再给绝对时点
     function windowRows(p, wins) {
-      var text = "";
-      var resetAt = "";
+      var cells = [];
       for (var i = 0; i < wins.length; i++) {
         var w = wins[i];
-        if (text !== "") text += " · ";
-        text += winLabel(w) + " " + w.percent + "%";
-        if (!resetAt && w.label === "5h" && w.resetsAt) resetAt = fmtTime(w.resetsAt);
-      }
-      var val = [React.createElement("span", { key: "t" }, text)];
-      if (resetAt) val.push(React.createElement("small", { key: "r" }, resetAt));
-      var meters = [];
-      for (var j = 0; j < wins.length; j++) {
-        var pct = wins[j].percent;
-        meters.push(React.createElement("div", { className: "wb-meter", key: j },
-          React.createElement("i", { className: barClass(pct), style: { width: Math.max(2, pct) + "%" } })));
+        cells.push(React.createElement(WindowCell, { key: i, w: w, text: resetText(w.resetsAt, w.label !== "5h") }));
       }
       return [
-        React.createElement("div", { className: "wb-row", key: "row" },
-          React.createElement("span", { className: "wb-prov" }, p.short),
-          React.createElement("span", { className: "wb-val" }, val)),
-        React.createElement("div", { className: "wb-meters", key: "meters" }, meters),
+        React.createElement("div", { className: "wb-quota" + (cells.length < 2 ? " wb-single" : ""), key: "quota" },
+          React.createElement("span", { className: "wb-qname" }, p.short),
+          cells),
       ];
+    }
+
+    function plainRow(p, text, className) {
+      return [React.createElement("div", { className: "wb-row", key: "row" },
+        React.createElement("span", { className: "wb-prov" }, p.short),
+        React.createElement("span", { className: "wb-val" + (className ? " " + className : "") }, text))];
     }
 
     function ProviderRow(props) {
@@ -207,38 +304,31 @@ window.__ModuleLoader__.load({
       if (p.status === "ok") {
         var wins = p.windows || [];
         if (wins.length > 0) return windowRows(p, wins);
-        if (p.balanceText) {
-          return React.createElement("div", { className: "wb-row", key: "row" },
-            React.createElement("span", { className: "wb-prov" }, p.short),
-            React.createElement("span", { className: "wb-val" }, p.balanceText));
-        }
-        return React.createElement("div", { className: "wb-row", key: "row" },
-          React.createElement("span", { className: "wb-prov" }, p.short),
-          React.createElement("span", { className: "wb-val" }, "—"));
+        if (p.balanceText) return plainRow(p, p.balanceText);
+        return plainRow(p, "—", "mut");
       }
-      if (p.status === "no-key") {
-        return React.createElement("div", { className: "wb-row", key: "row" },
-          React.createElement("span", { className: "wb-prov" }, p.short),
-          React.createElement("span", { className: "wb-val" }, "未配置"));
-      }
-      return React.createElement("div", { className: "wb-row", key: "row" },
-        React.createElement("span", { className: "wb-prov" }, p.short),
-        React.createElement("span", { className: "wb-val" }, "…"));
+      if (p.status === "no-key") return plainRow(p, "未配置", "mut");
+      if (p.status === "error") return plainRow(p, "失败", "err");
+      return plainRow(p, "刷新中…", "mut");
     }
-
     function HoverCard(props) {
       var s = props.state;
       var providers = s.providers || [];
       var ws = s.workspace || { title: "", path: "" };
       var errors = providers.filter(function (p) { return p.status === "error" && p.error; });
       return React.createElement("div", { className: "wb-card" },
-        React.createElement("div", { className: "wb-ws" },
-          React.createElement("span", { className: "wb-wsname", title: ws.path || "" }, ws.title || "—"),
-          React.createElement("span", { className: "wb-wsdir", title: ws.path || "" }, "📁 " + dirTail(ws.path)),
+        React.createElement("div", { className: "wb-hdr" },
+          React.createElement("div", { className: "wb-hdrmain" },
+            React.createElement("span", { className: "wb-wsname", title: ws.title || "" }, ws.title || "—"),
+            ws.path
+              ? React.createElement("span", { className: "wb-wsdir", title: ws.path },
+                React.createElement(Icon, { d: ICON_FOLDER }),
+                React.createElement("span", null, dirTail(ws.path)))
+              : null),
           React.createElement("button", {
-            type: "button", className: "wb-gear", title: "配置",
+            type: "button", className: "wb-gear", title: "配置", "aria-label": "配置",
             onClick: function (e) { e.stopPropagation(); props.onOpenCfg(); },
-          }, "⚙")),
+          }, React.createElement(Icon, { d: ICON_GEAR }))),
         providers.map(function (p) { return React.createElement(ProviderRow, { key: p.id, p: p }); }),
         errors.length > 0
           ? React.createElement("div", { className: "wb-errline" }, errors[0].short + "：" + errors[0].error)
